@@ -539,7 +539,7 @@ export class GameScene extends Phaser.Scene {
     const opLabel = t.operator === '+' ? `+${Math.floor(t.operand + (peg.level - 1) * t.growth)}`
       : t.operator === '*' ? `×${(t.operand + (peg.level - 1) * t.growth).toFixed(1)}`
       : t.operator === '/' ? `÷${t.operand}`
-      : t.operator === '^' ? `^${(t.operand + (peg.level - 1) * t.growth).toFixed(1)}`
+      : t.operator === '^' ? `^${(t.operand + (peg.level - 1) * t.growth).toFixed(2)}`
       : t.operator === 'addPercent' ? `+${Math.floor((t.operand + (peg.level - 1) * t.growth) * 100)}%`
       : t.operator === 'maxMul' ? '×2+' : '';
     this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, opLabel, t.color);
@@ -705,7 +705,7 @@ export class GameScene extends Phaser.Scene {
     if (cfg.operator === '+') return `+${Math.floor(cfg.operand + (peg.level - 1) * cfg.growth)}`;
     if (cfg.operator === '*') return `×${(cfg.operand + (peg.level - 1) * cfg.growth).toFixed(1)}`;
     if (cfg.operator === '/') return '÷2';
-    if (cfg.operator === '^') return `^${(cfg.operand + (peg.level - 1) * cfg.growth).toFixed(1)}`;
+    if (cfg.operator === '^') return `^${(cfg.operand + (peg.level - 1) * cfg.growth).toFixed(2)}`;
     if (cfg.operator === 'addPercent') return '%';
     if (cfg.operator === 'maxMul') return '×2+';
     return '贤';

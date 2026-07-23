@@ -12,7 +12,7 @@ import type { PegSave } from '../types';
 export class HUD {
   private scene: Phaser.Scene;
   private root: HTMLElement;
-  private shopTab: 'pegs' | 'autos' | 'global' = 'pegs';
+  private shopTab: 'pegs' | 'autos' | 'skills' | 'global' = 'pegs';
   private onPlacementSelect?: (typeId: string | null) => void;
   private selectedPegType: string | null = null;
 
@@ -32,7 +32,6 @@ export class HUD {
     this.bindShopTabs();
     this.bindPanelToggles();
     this.renderShop();
-    this.renderSkills();
     this.bindModals();
     this.bindEvents();
     this.updateHeader();
@@ -47,9 +46,9 @@ export class HUD {
     const map: Record<string, IconKey> = {
       'icon-gold': 'gold', 'icon-crystal': 'crystal', 'icon-ball': 'ball',
       'icon-chapter': 'chapter', 'icon-menu': 'menu', 'icon-pegs': 'pegs',
-      'icon-skills': 'skills', 'icon-prestige': 'prestige', 'icon-ending': 'ending',
+      'icon-prestige': 'prestige', 'icon-ending': 'ending',
       'icon-save': 'save', 'icon-save2': 'save', 'icon-home': 'home', 'icon-trash': 'trash',
-      'icon-pegs-dup': 'pegs', 'icon-skills-dup': 'skills',
+      'icon-pegs-dup': 'pegs',
     };
     for (const [id, key] of Object.entries(map)) {
       const el = document.getElementById(id);
@@ -66,18 +65,10 @@ export class HUD {
 
   private bindPanelToggles() {
     const shopBtn = document.getElementById('toggle-shop');
-    const skillBtn = document.getElementById('toggle-skill');
     const leftPanel = document.getElementById('left-panel');
-    const rightPanel = document.getElementById('right-panel');
     shopBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       leftPanel?.classList.toggle('open');
-      rightPanel?.classList.remove('open');
-    });
-    skillBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      rightPanel?.classList.toggle('open');
-      leftPanel?.classList.remove('open');
     });
     // 面板标题折叠按钮（所有屏幕尺寸）
     document.querySelectorAll('.collapse-btn').forEach((btn) => {
@@ -91,11 +82,8 @@ export class HUD {
     // 点击空白处收起移动端面板
     document.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('#left-panel') && !target.closest('#toggle-shop') && !target.closest('.shop-item')) {
+      if (!target.closest('#left-panel') && !target.closest('#toggle-shop') && !target.closest('.shop-item') && !target.closest('.skill-item')) {
         if (window.innerWidth <= 640) leftPanel?.classList.remove('open');
-      }
-      if (!target.closest('#right-panel') && !target.closest('#toggle-skill') && !target.closest('.skill-item')) {
-        if (window.innerWidth <= 640) rightPanel?.classList.remove('open');
       }
     });
   }
@@ -106,7 +94,7 @@ export class HUD {
       t.addEventListener('click', (e) => {
         tabs.forEach((x) => x.classList.remove('active'));
         (e.currentTarget as HTMLElement).classList.add('active');
-        this.shopTab = (e.currentTarget as HTMLElement).dataset.tab as 'pegs' | 'autos' | 'global';
+        this.shopTab = (e.currentTarget as HTMLElement).dataset.tab as 'pegs' | 'autos' | 'skills' | 'global';
         this.renderShop();
       });
     });
@@ -158,7 +146,7 @@ export class HUD {
     bus.on(EVT.PEG_PLACED, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PEG_UPGRADED, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PEG_SOLD, () => { this.updateHeader(); this.renderShop(); });
-    bus.on(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderSkills(); });
+    bus.on(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.AUTO_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PRESTIGE_AVAILABLE, () => this.showPrestigeModal());
     bus.on(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
@@ -188,6 +176,7 @@ export class HUD {
     list.innerHTML = '';
     if (this.shopTab === 'pegs') this.renderPegShop(list);
     else if (this.shopTab === 'autos') this.renderAutoShop(list);
+    else if (this.shopTab === 'skills') this.renderSkillShop(list);
     else this.renderGlobalShop(list);
   }
 
@@ -327,9 +316,7 @@ export class HUD {
     }
   }
 
-  private renderSkills() {
-    const list = document.getElementById('skill-list')!;
-    list.innerHTML = '';
+  private renderSkillShop(list: HTMLElement) {
     for (const cfg of SKILLS) {
       if (cfg.category === 'active') continue;
       // 直接前置本身的前置未达 → 当前项隐藏（递归隐藏）

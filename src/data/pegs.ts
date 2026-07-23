@@ -57,11 +57,11 @@ export const PEG_TYPES: PegConfig[] = [
     desc: '弹珠数值 ÷3，更激进的复位', maxLevel: 8,
     prereq: { id: 'div2', level: 5 }, prereqBonusLevels: 3,
   },
-  // 指数系：1.1 次方，升级 +0.1
+  // 指数系：1.02 次方，升级 +0.02
   {
-    id: 'square', name: '^1.1 钉', operator: '^', operand: 1.1, growth: 0.1,
+    id: 'square', name: '^1.02 钉', operator: '^', operand: 1.02, growth: 0.02,
     baseCost: 50000, costGrowth: 2.6, color: 0x8b949e, icon: 'power',
-    desc: '弹珠数值 1.1 次方，升级后指数 +0.1', maxLevel: 20,
+    desc: '弹珠数值 1.02 次方，升级后指数 +0.02', maxLevel: 20,
     prereq: { id: 'mul3', level: 5 }, prereqBonusLevels: 5,
   },
   // 百分比系

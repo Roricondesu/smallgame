@@ -162,7 +162,6 @@
       box-shadow: var(--shadow);
     }
     #left-panel { left: 10px; }
-    #right-panel { right: 10px; }
 
     .panel-title {
       font-size: 12px;
@@ -428,7 +427,6 @@
     /* 手机横屏 */
     @media (max-width: 900px) {
       .side-panel { width: 200px; top: 80px; padding: 10px; }
-      #right-panel { right: 8px; }
       #left-panel { left: 8px; }
       .stat-chip { padding: 6px 10px; font-size: 12px; }
       #chapter-tag { font-size: 11px; padding: 6px 10px; }
@@ -449,7 +447,6 @@
       }
       .side-panel.open { display: block; }
       #left-panel { left: 12px; }
-      #right-panel { right: 12px; }
       .icon-btn { padding: 6px 8px; font-size: 11px; }
       .icon-btn span:not([id^="icon"]) { display: none; }
       .modal { padding: 16px; }
@@ -488,7 +485,6 @@
     .panel-toggle:hover { background: var(--btn-hover); }
     .panel-toggle svg { width: 14px; height: 14px; }
     #toggle-shop { bottom: 80px; left: 10px; }
-    #toggle-skill { bottom: 80px; right: 10px; }
   </style>
 </head>
 <body>
@@ -504,21 +500,16 @@
     </div>
 
     <button id="toggle-shop" class="panel-toggle"><span id="icon-pegs"></span>商店</button>
-    <button id="toggle-skill" class="panel-toggle"><span id="icon-skills"></span>技能</button>
 
     <div id="left-panel" class="side-panel">
-      <div class="panel-title"><span id="icon-pegs-dup"></span>钉子商店<button class="collapse-btn" data-target="left-panel" aria-label="折叠">▾</button></div>
+      <div class="panel-title"><span id="icon-pegs-dup"></span>商店与技能<button class="collapse-btn" data-target="left-panel" aria-label="折叠">▾</button></div>
       <div class="tab-row">
         <button class="tab-btn active" data-tab="pegs">钉子</button>
         <button class="tab-btn" data-tab="autos">自动器</button>
+        <button class="tab-btn" data-tab="skills">技能</button>
         <button class="tab-btn" data-tab="global">全局</button>
       </div>
       <div id="shop-list"></div>
-    </div>
-
-    <div id="right-panel" class="side-panel">
-      <div class="panel-title"><span id="icon-skills-dup"></span>升级与技能<button class="collapse-btn" data-target="right-panel" aria-label="折叠">▾</button></div>
-      <div id="skill-list"></div>
     </div>
 
     <div id="toast"></div>
