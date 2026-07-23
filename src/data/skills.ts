@@ -95,6 +95,20 @@ export const SKILLS: SkillConfig[] = [
     getValue: (lvl) => lvl * 2,
     icon: 'matrix', desc: '突破单颗钉子的等级上限',
   },
+  {
+    id: 'wallBounce', name: '墙体反弹', category: 'global', maxLevel: 10,
+    baseCost: 1200, costGrowth: 1.7, unlockChapter: 1,
+    effect: (lvl) => `墙体弹力 +${(lvl * 8)}%`,
+    getValue: (lvl) => lvl * 0.08,
+    icon: 'pin', desc: '弹珠撞左右墙体时弹力提升，更易在场景内反弹',
+  },
+  {
+    id: 'wallBonus', name: '墙体金币', category: 'global', maxLevel: 10,
+    baseCost: 2500, costGrowth: 1.8, unlockChapter: 2,
+    effect: (lvl) => `撞墙结算 +${(lvl * 4)}% 当前数值`,
+    getValue: (lvl) => lvl * 0.04,
+    icon: 'coin', desc: '弹珠撞墙时按当前数值获得额外金币',
+  },
   // 主动技能
   {
     id: 'frenzy', name: '狂热', category: 'active', maxLevel: 1,

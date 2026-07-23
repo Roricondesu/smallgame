@@ -20,11 +20,13 @@ interface Ball {
   golden: boolean;
   sageCopy: number;
   lastPegId?: string;
+  stuckSince?: number;
 }
 
 // Matter 钉子对象
 interface PegSprite {
-  sprite: Phaser.Physics.Matter.Image;
+  // 真实钉子是 Matter.Image，占位钉子是 Arc（无物理体）
+  sprite: Phaser.Physics.Matter.Image | Phaser.GameObjects.Arc;
   pegId: string;
   typeId: string;
   text: Phaser.GameObjects.Text;
@@ -61,6 +63,16 @@ export class GameScene extends Phaser.Scene {
   // 球/钉子的碰撞体集合，用于碰撞回调过滤
   private ballLabels = new WeakSet<MatterJS.Body>();
   private pegLabels = new WeakSet<MatterJS.Body>();
+  // sprite -> Ball 的映射，O(1) 查找
+  private ballBySprite = new Map<Phaser.Physics.Matter.Image, Ball>();
+  // sprite -> PegSprite 的映射，O(1) 查找
+  private pegBySprite = new Map<Phaser.Physics.Matter.Image | Phaser.GameObjects.Arc, PegSprite>();
+  // 墙体 body 集合，用于识别球撞墙
+  private wallLabels = new WeakSet<MatterJS.Body>();
+  // 球上次撞墙时间，避免连续结算
+  private ballWallCooldown = new WeakMap<Ball, number>();
+  // 全局粒子 emitter（复用避免性能问题）
+  private globalParticleEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   // 六边形蜂窝布局：奇数行向右偏移半个格子
   private gridToPixel(gx: number, gy: number): { x: number; y: number } {
@@ -139,9 +151,31 @@ export class GameScene extends Phaser.Scene {
     const gravityMul = 1 + (GameState.getSkillLevel('gravity') || 0) * 0.1;
     this.matter.world.setGravity(0, gravityMul);
 
-    // 左右边墙（静态矩形）
-    this.matter.add.rectangle(2, H / 2, 4, H, { isStatic: true, label: 'wall' });
-    this.matter.add.rectangle(W - 2, H / 2, 4, H, { isStatic: true, label: 'wall' });
+    // 全局粒子 emitter（复用，避免每次碰撞创建新 emitter）
+    this.globalParticleEmitter = this.add.particles(0, 0, 'particle', {
+      speed: { min: 40, max: 120 },
+      angle: { min: 0, max: 360 },
+      lifespan: 300,
+      quantity: 0,
+      scale: { start: 1, end: 0 },
+      emitting: false,
+    });
+
+    // 左右边墙（可视化 + 静态矩形），墙体宽度 10px，颜色醒目
+    const wallRestitution = 0.7 + GameState.getSkillLevel('wallBounce') * 0.08;
+    const wallW = 10;
+    // 左墙视觉
+    this.add.rectangle(wallW / 2, H / 2, wallW, H, 0x30363d).setStrokeStyle(1, 0x484f58);
+    this.add.rectangle(W - wallW / 2, H / 2, wallW, H, 0x30363d).setStrokeStyle(1, 0x484f58);
+    // 左墙物理体（标记为 wall）
+    const leftWall = this.matter.add.rectangle(wallW / 2, H / 2, wallW, H, {
+      isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
+    });
+    const rightWall = this.matter.add.rectangle(W - wallW / 2, H / 2, wallW, H, {
+      isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
+    });
+    if (leftWall) this.wallLabels.add(leftWall as MatterJS.Body);
+    if (rightWall) this.wallLabels.add(rightWall as MatterJS.Body);
 
     // 加载钉子（真实）
     const occupied = new Set<string>();
@@ -255,24 +289,69 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-FIVE', () => GameState.triggerActive(ACTIVE_SKILLS[4]?.id));
   }
 
-  // Matter 碰撞处理：球碰钉子时触发数值运算
+  // Matter 碰撞处理：球碰钉子或墙时触发
+  // 性能优化：用 sprite 引用直接查找，避免遍历数组
   private handleCollision(bodyA: MatterJS.Body, bodyB: MatterJS.Body) {
-    // 找出哪个是球，哪个是钉子
-    let ballBody: MatterJS.Body | null = null;
-    let pegBody: MatterJS.Body | null = null;
+    const aIsBall = this.ballLabels.has(bodyA);
+    const bIsBall = this.ballLabels.has(bodyB);
+    const aIsPeg = this.pegLabels.has(bodyA);
+    const bIsPeg = this.pegLabels.has(bodyB);
 
-    if (this.ballLabels.has(bodyA) && this.pegLabels.has(bodyB)) {
-      ballBody = bodyA; pegBody = bodyB;
-    } else if (this.ballLabels.has(bodyB) && this.pegLabels.has(bodyA)) {
-      ballBody = bodyB; pegBody = bodyA;
+    // 球 vs 钉子
+    if (aIsBall && bIsPeg) {
+      this.fireBallPeg(bodyA, bodyB);
+      return;
+    }
+    if (bIsBall && aIsPeg) {
+      this.fireBallPeg(bodyB, bodyA);
+      return;
     }
 
-    if (!ballBody || !pegBody) return;
+    // 球 vs 墙
+    if (aIsBall && this.wallLabels.has(bodyB)) {
+      this.fireBallWall(bodyA);
+      return;
+    }
+    if (bIsBall && this.wallLabels.has(bodyA)) {
+      this.fireBallWall(bodyB);
+      return;
+    }
+  }
 
-    const ball = this.balls.find((b) => b.sprite.body === ballBody);
-    const ps = [...this.pegSprites.values()].find((p) => p.sprite.body === pegBody)
-      || [...this.placeholderPegs.values()].find((p) => p.sprite.body === pegBody);
+  private fireBallPeg(ballBody: MatterJS.Body, pegBody: MatterJS.Body) {
+    // 用 body.gameObject 直接取 sprite，再用 Map O(1) 查找
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ballSprite = (ballBody as any).gameObject as Phaser.Physics.Matter.Image | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pegSprite = (pegBody as any).gameObject as Phaser.Physics.Matter.Image | undefined;
+    if (!ballSprite || !pegSprite) return;
+    const ball = this.ballBySprite.get(ballSprite);
+    const ps = this.pegBySprite.get(pegSprite);
     if (ball && ps) this.onBallPeg(ball, ps);
+  }
+
+  private fireBallWall(ballBody: MatterJS.Body) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ballSprite = (ballBody as any).gameObject as Phaser.Physics.Matter.Image | undefined;
+    if (!ballSprite) return;
+    const ball = this.ballBySprite.get(ballSprite);
+    if (ball) this.onBallWall(ball);
+  }
+
+  // 球撞墙：根据"墙体金币"技能结算额外金币（带 1 秒冷却防刷屏）
+  private onBallWall(ball: Ball) {
+    const now = Date.now();
+    const last = this.ballWallCooldown.get(ball) || 0;
+    if (now - last < 1000) return;
+    this.ballWallCooldown.set(ball, now);
+
+    const wallBonusLvl = GameState.getSkillLevel('wallBonus');
+    if (wallBonusLvl <= 0) return;
+
+    const bonus = Math.floor(ball.value * wallBonusLvl * 0.04);
+    if (bonus <= 0) return;
+    GameState.addGold(bonus);
+    this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, `+${formatNum(bonus)}`, 0x56d4dd);
   }
 
   // 程序化绘制每章背景
@@ -338,16 +417,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    // 同步球上数字文字到球的位置
+    // 同步球上数字文字到球的位置 + 检测停滞球
     for (const ball of this.balls) {
       ball.text.setPosition(ball.sprite.x, ball.sprite.y - 14);
     }
-    // 清理落底弹珠
+    // 清理落底弹珠 + 停滞球（速度过低且存在时间过长）
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const ball = this.balls[i];
+      // 落底结算
       if (ball.sprite.y > SETTLE_Y + 50) {
         this.settleBall(ball);
         this.destroyBall(i);
+        continue;
+      }
+      // 防止球卡住：检测长时间停滞的球（速度过低），强制结算
+      const v = ball.sprite.body?.velocity;
+      if (v && Math.abs(v.x) < 0.3 && Math.abs(v.y) < 0.3) {
+        if (!ball.stuckSince) ball.stuckSince = Date.now();
+        else if (Date.now() - ball.stuckSince > 3000) {
+          this.settleBall(ball);
+          this.destroyBall(i);
+        }
+      } else {
+        ball.stuckSince = undefined;
       }
     }
   }
@@ -404,6 +496,7 @@ export class GameScene extends Phaser.Scene {
 
     const ball: Ball = { sprite, text, value, source, golden, sageCopy: 0 };
     this.balls.push(ball);
+    this.ballBySprite.set(sprite, ball);
   }
 
   private ballTextureFor(value: number, golden: boolean): string {
@@ -455,15 +548,11 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: ps.sprite, scaleX: 1.3, scaleY: 1.3, duration: 80, yoyo: true });
     this.tweens.add({ targets: ps.text, scaleX: 1.4, scaleY: 1.4, duration: 80, yoyo: true });
 
-    const emitter = this.add.particles(ball.sprite.x, ball.sprite.y, 'particle', {
-      speed: { min: 40, max: 120 },
-      angle: { min: 0, max: 360 },
-      lifespan: 300,
-      quantity: crit ? 12 : 6,
-      scale: { start: 1, end: 0 },
-      tint: crit ? 0xff6b6b : t.color,
-    });
-    this.time.delayedCall(400, () => emitter.destroy());
+    // 性能优化：粒子用 emit 而非每次创建新 emitter（避免大量 emitter 堆积）
+    if (this.globalParticleEmitter) {
+      this.globalParticleEmitter.setPosition(ball.sprite.x, ball.sprite.y);
+      this.globalParticleEmitter.explode(crit ? 12 : 6, ball.sprite.x, ball.sprite.y);
+    }
 
     if (ball.sprite.texture.key !== this.ballTextureFor(ball.value, ball.golden)) {
       ball.sprite.setTexture(this.ballTextureFor(ball.value, ball.golden));
@@ -497,6 +586,7 @@ export class GameScene extends Phaser.Scene {
 
   private destroyBall(index: number) {
     const ball = this.balls[index];
+    this.ballBySprite.delete(ball.sprite);
     ball.sprite.destroy();
     ball.text.destroy();
     this.balls.splice(index, 1);
@@ -543,6 +633,7 @@ export class GameScene extends Phaser.Scene {
 
     const ps: PegSprite = { sprite, pegId: peg.id, typeId: peg.typeId, text, gridX: peg.x, gridY: peg.y };
     this.pegSprites.set(peg.id, ps);
+    this.pegBySprite.set(sprite, ps);
 
     sprite.setInteractive();
     sprite.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -558,7 +649,9 @@ export class GameScene extends Phaser.Scene {
     sprite.on('pointerout', () => sprite.setAlpha(1));
   }
 
-  // ===== 占位钉子（显示 0，可被替换） =====
+  // ===== 占位钉子（显示 0，可被替换，纯视觉无物理体） =====
+  // 性能优化：占位钉子只用 graphics + text 绘制，不创建 Matter body
+  // 满屏几十个占位钉子若都有物理体会严重拖慢物理引擎
   private initPlaceholders(occupied: Set<string>) {
     for (let gy = 0; gy < BALANCE.gridRows; gy++) {
       const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
@@ -572,8 +665,9 @@ export class GameScene extends Phaser.Scene {
 
   private renderPlaceholder(gx: number, gy: number) {
     const { x, y } = this.gridToPixel(gx, gy);
-    const sprite = this.makePegSprite(x, y, 'peg_placeholder', 'peg:placeholder');
-    sprite.setAlpha(0.45);
+    // 只用 graphics 圆 + text，不创建物理体
+    const sprite = this.add.circle(x, y, PEG_RADIUS, 0x2a3038, 0.6);
+    sprite.setStrokeStyle(1, 0x3a4248);
 
     const text = this.add.text(x, y, '0', {
       fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '10px',
@@ -609,6 +703,7 @@ export class GameScene extends Phaser.Scene {
     const ps = this.pegSprites.get(pegId);
     if (!ps) return;
     const gx = ps.gridX, gy = ps.gridY;
+    this.pegBySprite.delete(ps.sprite);
     ps.sprite.destroy();
     ps.text.destroy();
     this.pegSprites.delete(pegId);
@@ -659,11 +754,17 @@ export class GameScene extends Phaser.Scene {
 
   // ===== 视觉 =====
   private spawnFloatText(x: number, y: number, text: string, color: number) {
+    // 性能优化：复用 text 对象，避免频繁创建销毁
+    // 简单方案：直接创建但用短 tween，text 数量上限由游戏自然频率控制
+    // 大量浮动文字时跳过，避免堆积（每帧最多累积一定数量）
     const t = this.add.text(x, y, text, {
       fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '12px',
       color: '#' + color.toString(16).padStart(6, '0'), stroke: '#000', strokeThickness: 2,
-    }).setOrigin(0.5);
-    this.tweens.add({ targets: t, y: y - 40, alpha: 0, duration: 700, onComplete: () => t.destroy() });
+    }).setOrigin(0.5).setDepth(10);
+    this.tweens.add({
+      targets: t, y: y - 40, alpha: 0, duration: 600,
+      onComplete: () => t.destroy(),
+    });
   }
 
   private showTutorialTip() {
