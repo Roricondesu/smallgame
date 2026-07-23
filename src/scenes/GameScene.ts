@@ -49,7 +49,6 @@ export class GameScene extends Phaser.Scene {
   private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
   private placementMode: { typeId: string | null } = { typeId: null };
-  private dropZoneRect!: Phaser.GameObjects.Rectangle;
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private comboDisplay!: Phaser.GameObjects.Text;
   private frenzyOverlay!: Phaser.GameObjects.Rectangle;
@@ -134,12 +133,8 @@ export class GameScene extends Phaser.Scene {
       0x000000, 0.2,
     ).setStrokeStyle(1, 0x30363d).setDepth(-1);
 
-    // 投放区（保留可点击区域，但不显示提示文字）
-    this.dropZoneRect = this.add.rectangle(W / 2, this.dropZoneH / 2, W, this.dropZoneH, 0x161b22, 0.4)
-      .setStrokeStyle(1, 0xf0b429, 0.5);
-    this.dropZoneRect.setInteractive(new Phaser.Geom.Rectangle(0, 0, W, this.dropZoneH), Phaser.Geom.Rectangle.Contains);
+    // 投放区不再绘制卡片：点击网格区域内任意位置即可放球
 
-    // 结算槽
     // 结算槽：与钉子网格左右对齐，避免球被墙挡住却落到墙外的判定区
     this.settleSlots = [];
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
@@ -165,7 +160,7 @@ export class GameScene extends Phaser.Scene {
     const wallW = 8;
     const gridLeftX = this.gridX;
     const gridRightX = this.gridX + BALANCE.gridCols * BALANCE.cellSize;
-    const wallTopY = this.gridY - 10;
+    const wallTopY = 0;
     const wallBottomY = this.settleY + 30;
     const wallH = wallBottomY - wallTopY;
 
@@ -202,14 +197,8 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // 输入事件
-    this.dropZoneRect.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
-      event.stopPropagation();
-      this.dropBallManual();
-    });
-
+    // 输入事件：点击网格区域内任意位置放球；放置模式下则放置钉子
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.y < this.dropZoneH) return;
       if (pointer.y > this.settleY + 40) return;
       if (this.placementMode.typeId) {
         const grid = this.pixelToGrid(pointer.x, pointer.y);
@@ -221,7 +210,10 @@ export class GameScene extends Phaser.Scene {
             this.updatePlacementCursor();
           }
         }
+        return;
       }
+      // 非放置模式：点击放球
+      this.dropBallManual(pointer.x);
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
@@ -380,7 +372,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ===== 投弹 =====
-  private dropBallManual() {
+  private dropBallManual(x: number) {
     const lvl = GameState.getSkillLevel('chargeThrow');
     const init = GameState.ballInitialValue;
     let value = init;
@@ -389,8 +381,8 @@ export class GameScene extends Phaser.Scene {
     const multiThrow = GameState.getSkillLevel('multiThrow');
     const count = 1 + multiThrow;
     for (let i = 0; i < count; i++) {
-      const x = (0.2 + Math.random() * 0.6) * this.scale.width + (i - count / 2) * 16;
-      this.spawnBall(x, 30, value, 'manual');
+      const offsetX = x + (i - count / 2) * 16;
+      this.spawnBall(offsetX, 10, value, 'manual');
     }
     GameState.onBallDropped('manual');
   }
