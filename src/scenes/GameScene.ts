@@ -39,7 +39,7 @@ const SETTLE_Y = GRID_Y + BALANCE.gridRows * BALANCE.cellSize + 10;
 export class GameScene extends Phaser.Scene {
   private balls: Ball[] = [];
   private ballsGroup!: Phaser.Physics.Arcade.Group;
-  private pegsGroup!: Phaser.Physics.Arcade.Group;
+  private pegsGroup!: Phaser.Physics.Arcade.StaticGroup;
   private pegSprites: Map<string, PegSprite> = new Map();
   private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
@@ -129,14 +129,11 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBoundsCollision(true, true, true, false);
     this.physics.world.gravity.y = BALANCE.gravityBase * (1 + (GameState.getSkillLevel('gravity') || 0) * 0.1);
 
-    // 弹珠组（受重力）
+    // 球：动态组（受重力，会反弹）
     this.ballsGroup = this.physics.add.group();
-    // 钉子组：immovable=true 不被推动，allowGravity=false 不受重力
-    // 关键：不用 moves=false（会让引擎跳过碰撞响应），改用 allowGravity=false
-    this.pegsGroup = this.physics.add.group({
-      immovable: true,
-      allowGravity: false,
-    });
+    // 钉子：静态组（StaticGroup）—— Phaser 官方推荐方案
+    // 静态体不会移动，collider 会正确计算动态球与静态钉子的碰撞反弹
+    this.pegsGroup = this.physics.add.staticGroup();
 
     this.physics.add.collider(this.ballsGroup, this.pegsGroup, (ballObj, pegObj) => {
       const ball = this.balls.find((b) => b.sprite === ballObj);
@@ -477,11 +474,10 @@ export class GameScene extends Phaser.Scene {
 
   // ===== 钉子 =====
   private makePegSprite(x: number, y: number, texKey: string): Phaser.Physics.Arcade.Image {
-    // 用 group.create 让 group 的 immovable/allowGravity 配置自动应用
+    // staticGroup.create 会自动创建 StaticBody 并正确定位
+    // 不调用 setCircle（矩形碰撞体最可靠），不改 displaySize
+    // texture 本身是 20x20，圆心在 (10,10) 半径 9，矩形碰撞体与视觉圆基本一致
     const sprite = this.pegsGroup.create(x, y, texKey) as Phaser.Physics.Arcade.Image;
-    sprite.setDisplaySize(18, 18);
-    // 圆形碰撞体（不传 offset，圆心自动居中于 sprite）
-    sprite.setCircle(9);
     return sprite;
   }
 
