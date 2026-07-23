@@ -192,14 +192,11 @@ export class HUD {
     for (const cfg of PEG_TYPES) {
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      // 前置的前置都还没解锁才隐藏；只要前置已可见，就显示当前项（带锁定提示）
+      // 直接前置本身的前置未达 → 当前项隐藏
+      // （即只显示"直接前置已可解锁"的下一项）
       if (cfg.prereq) {
         const pre = PEG_MAP[cfg.prereq.id];
-        if (pre && pre.unlockChapter > GameState.chapterId) continue;
-        if (pre?.prereq) {
-          const prePre = PEG_MAP[pre.prereq.id];
-          if (prePre && prePre.unlockChapter > GameState.chapterId) continue;
-        }
+        if (pre && !GameState.isPegPrereqMet(pre)) continue;
       }
 
       const prereqMet = GameState.isPegPrereqMet(cfg);
@@ -244,10 +241,10 @@ export class HUD {
     for (const cfg of AUTO_DROPPERS) {
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      // 前置的前置都还没解锁才隐藏；只要前置已可见，就显示当前项（带锁定提示）
+      // 直接前置本身的前置未达 → 当前项隐藏
       if (cfg.prereq) {
         const pre = AUTO_MAP[cfg.prereq.id];
-        if (pre && pre.unlockChapter > GameState.chapterId) continue;
+        if (pre && !GameState.isAutoPrereqMet(pre)) continue;
       }
 
       const prereqMet = GameState.isAutoPrereqMet(cfg);
@@ -342,10 +339,10 @@ export class HUD {
       if (cfg.category === 'active') continue;
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      // 前置的前置都还没解锁才隐藏；只要前置已可见，就显示当前项（带锁定提示）
+      // 直接前置本身的前置未达 → 当前项隐藏
       if (cfg.prereq) {
         const pre = SKILL_MAP[cfg.prereq.id];
-        if (pre && pre.unlockChapter > GameState.chapterId) continue;
+        if (pre && !GameState.isSkillPrereqMet(pre)) continue;
       }
 
       const prereqMet = GameState.isSkillPrereqMet(cfg);
