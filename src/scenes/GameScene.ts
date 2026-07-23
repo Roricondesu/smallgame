@@ -284,8 +284,6 @@ export class GameScene extends Phaser.Scene {
       this.showTutorialTip();
     }
 
-    this.checkEndingChoice();
-
     this.events.on('shutdown', () => {
       GameState.saveGame();
       this.hud.unmount();
@@ -796,11 +794,5 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(1500, () => {
       this.hud.showToast('先买 +1 钉，再点击投放区开始赚钱', 'pin');
     });
-  }
-
-  private checkEndingChoice() {
-    if (GameState.save.storyProgress === 'ch5_choosing') {
-      bus.emit(EVT.ENDING_CHOICE);
-    }
   }
 }

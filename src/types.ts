@@ -97,8 +97,6 @@ export interface ChapterConfig {
   targetGold: number;
   bg: number;
   accent: string;
-  storyIntro: string[];
-  storyEnding: string[];
 }
 
 export interface CrystalUpgrade {

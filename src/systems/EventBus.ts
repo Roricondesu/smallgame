@@ -13,7 +13,6 @@ export const EVT = {
   ACTIVE_EXPIRED: 'active_expired',
   CHAPTER_CHANGED: 'chapter_changed',
   PRESTIGE_AVAILABLE: 'prestige_available',
-  ENDING_CHOICE: 'ending_choice',
   TOAST: 'toast',
   SAVE_DONE: 'save_done',
 } as const;

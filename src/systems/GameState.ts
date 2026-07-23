@@ -508,24 +508,14 @@ class GameStateClass {
   checkChapterGoal() {
     const ch = this.chapter;
     if (this._save.totalGold < ch.targetGold) return;
-    if (this._save.storyProgress.endsWith('_ending')) return;
-
-    // 第 5 章最终选择（优先级最高，不受 _ready 限制）
-    if (this._save.chapterId >= 5 && this._save.gold >= 1e15 && !this._save.storyProgress.includes('choosing')) {
-      this._save.storyProgress = 'ch5_choosing';
-      bus.emit(EVT.ENDING_CHOICE);
-      return;
-    }
-
-    // 已展示过归零试炼（_ready 后缀）则不再重复弹窗
+    // 已展示过归零试炼则不再重复弹窗
     if (this._save.storyProgress.endsWith('_ready')) return;
-
-    // 标记为已展示，避免 addGold 每次都重复弹窗
+    // 标记为已展示
     this._save.storyProgress = `ch${this._save.chapterId}_ready`;
     bus.emit(EVT.PRESTIGE_AVAILABLE);
   }
 
-  // 玩家主动关闭归零试炼弹窗：保持 _ready 状态，不再重复弹
+  // 玩家主动关闭归零弹窗：保持 _ready 状态，不再重复弹
   dismissPrestigeModal() {
     // storyProgress 已是 _ready，无需改动；此方法留给 UI 明确语义
   }
@@ -541,7 +531,7 @@ class GameStateClass {
     this._save.autoDroppers = {};
     this._save.skillLevels = {};
     this._save.ballInitialValue = 1;
-    this._save.storyProgress = `ch${this._save.chapterId}_intro`;
+    this._save.storyProgress = `ch${this._save.chapterId}_ready`;
     bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     bus.emit(EVT.CRYSTAL_CHANGED, this._save.crystal);
     bus.emit(EVT.BALL_VALUE_CHANGED, 1);

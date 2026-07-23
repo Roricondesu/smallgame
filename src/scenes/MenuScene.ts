@@ -47,11 +47,7 @@ export class MenuScene extends Phaser.Scene {
     const hasSave = GameState.save.stats.totalBalls > 0 || GameState.pegs.length > 0 || GameState.gold > 0;
 
     this.makeBtn(W / 2, H * 0.52, hasSave ? '继续游戏' : '开始游戏', () => {
-      if (GameState.storyProgress.endsWith('_intro') && GameState.save.stats.totalBalls === 0) {
-        this.scene.start('Story', { type: 'intro', chapterId: GameState.chapterId });
-      } else {
-        this.scene.start('OfflineReport');
-      }
+      this.scene.start('OfflineReport');
     });
 
     this.makeBtn(W / 2, H * 0.62, '数晶商店', () => this.showCrystalShop());

@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
-import { StoryScene } from './scenes/StoryScene';
 import { OfflineReportScene } from './scenes/OfflineReportScene';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -31,7 +30,7 @@ const config: Phaser.Types.Core.GameConfig = {
       },
     },
   },
-  scene: [BootScene, MenuScene, GameScene, StoryScene, OfflineReportScene],
+  scene: [BootScene, MenuScene, GameScene, OfflineReportScene],
 };
 
 new Phaser.Game(config);

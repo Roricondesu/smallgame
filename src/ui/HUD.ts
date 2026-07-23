@@ -62,16 +62,8 @@ export class HUD {
 
   private bindHeader() {
     document.getElementById('btn-menu')!.addEventListener('click', () => {
-      // 如果当前已可归零（_ready 状态），在菜单里显示归零试炼按钮
-      const ready = GameState.save.storyProgress.endsWith('_ready');
-      const btn = document.getElementById('menu-prestige')!;
-      btn.style.display = ready ? '' : 'none';
+      // 归零弹窗只在 _ready 时显示，菜单按钮保持原样
       document.getElementById('modal-menu')!.classList.add('open');
-    });
-    // 菜单里的"归零试炼"按钮：重新打开归零弹窗
-    document.getElementById('menu-prestige')!.addEventListener('click', () => {
-      document.getElementById('modal-menu')!.classList.remove('open');
-      this.showPrestigeModal();
     });
   }
 
@@ -130,18 +122,8 @@ export class HUD {
     document.getElementById('prestige-confirm')!.addEventListener('click', () => {
       document.getElementById('modal-prestige')!.classList.remove('open');
       GameState.prestige(GameState.chapterId + 1);
-      this.scene.scene.start('Story', { type: 'intro', chapterId: GameState.chapterId });
-    });
-
-    document.getElementById('ending-reset')!.addEventListener('click', () => {
-      document.getElementById('modal-ending')!.classList.remove('open');
-      GameState.prestige(5);
-      this.scene.scene.start('Story', { type: 'ending_true', chapterId: 5 });
-    });
-    document.getElementById('ending-continue')!.addEventListener('click', () => {
-      document.getElementById('modal-ending')!.classList.remove('open');
-      GameState.save.storyProgress = 'ch5_bad';
-      this.scene.scene.start('Story', { type: 'ending_bad', chapterId: 5 });
+      // 归零后直接进入下一章游戏，不再播放剧情
+      this.scene.scene.start('Game');
     });
 
     document.getElementById('menu-home')!.addEventListener('click', () => {
@@ -162,7 +144,7 @@ export class HUD {
     });
 
     // 点击遮罩关闭
-    for (const id of ['modal-prestige', 'modal-ending', 'modal-menu']) {
+    for (const id of ['modal-prestige', 'modal-menu']) {
       document.getElementById(id)!.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) {
           (e.currentTarget as HTMLElement).classList.remove('open');
@@ -182,7 +164,6 @@ export class HUD {
     bus.on(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderSkills(); this.renderActives(); });
     bus.on(EVT.AUTO_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PRESTIGE_AVAILABLE, () => this.showPrestigeModal());
-    bus.on(EVT.ENDING_CHOICE, () => this.showEndingModal());
     bus.on(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
   }
 
@@ -435,10 +416,6 @@ export class HUD {
   private showPrestigeModal() {
     document.getElementById('prestige-gold')!.textContent = formatNum(GameState.save.totalGold);
     document.getElementById('modal-prestige')!.classList.add('open');
-  }
-
-  private showEndingModal() {
-    document.getElementById('modal-ending')!.classList.add('open');
   }
 
   showToast(msg: string, icon: IconKey = 'info') {
