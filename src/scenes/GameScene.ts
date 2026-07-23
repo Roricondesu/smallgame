@@ -35,12 +35,6 @@ interface PegSprite {
   placeholder?: boolean;
 }
 
-const GAME_W = 960;
-const GRID_X = (GAME_W - BALANCE.gridCols * BALANCE.cellSize) / 2;
-const GRID_Y = BALANCE.pegGridTopOffset;
-const DROP_ZONE_H = 70;
-const SETTLE_Y = GRID_Y + BALANCE.gridRows * BALANCE.cellSize + 10;
-
 // 钉子半径（视觉与碰撞体一致）
 const PEG_RADIUS = 9;
 // 占位钉子半径（缩小，但仍参与碰撞）
@@ -76,19 +70,25 @@ export class GameScene extends Phaser.Scene {
   // 全局粒子 emitter（复用避免性能问题）
   private globalParticleEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
+  // 网格布局参数：在 create() 中根据画布尺寸动态计算，使游戏内容居中
+  private gridX = 0;
+  private gridY = 0;
+  private dropZoneH = 70;
+  private settleY = 0;
+
   // 六边形蜂窝布局：奇数行向右偏移半个格子
   private gridToPixel(gx: number, gy: number): { x: number; y: number } {
     const offsetX = (gy % 2) * (BALANCE.cellSize / 2);
-    const x = GRID_X + gx * BALANCE.cellSize + BALANCE.cellSize / 2 + offsetX;
-    const y = GRID_Y + gy * BALANCE.cellSize + BALANCE.cellSize / 2;
+    const x = this.gridX + gx * BALANCE.cellSize + BALANCE.cellSize / 2 + offsetX;
+    const y = this.gridY + gy * BALANCE.cellSize + BALANCE.cellSize / 2;
     return { x, y };
   }
 
   private pixelToGrid(x: number, y: number): { gx: number; gy: number } | null {
-    const gy = Math.floor((y - GRID_Y) / BALANCE.cellSize);
+    const gy = Math.floor((y - this.gridY) / BALANCE.cellSize);
     if (gy < 0 || gy >= BALANCE.gridRows) return null;
     const offsetX = (gy % 2) * (BALANCE.cellSize / 2);
-    const gx = Math.floor((x - GRID_X - offsetX - BALANCE.cellSize / 2) / BALANCE.cellSize);
+    const gx = Math.floor((x - this.gridX - offsetX - BALANCE.cellSize / 2) / BALANCE.cellSize);
     const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
     if (gx < 0 || gx >= maxCol) return null;
     return { gx, gy };
@@ -104,8 +104,20 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const W = this.scale.width, H = this.scale.height;
-    const ch = GameState.chapter;
-    this.cameras.main.setBackgroundColor(ch.bg);
+
+    // 网格居中：根据当前画布尺寸计算 GRID_X/Y，让 12×16 网格水平居中、垂直留出顶部投放区与底部结算区
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const gridH = BALANCE.gridRows * BALANCE.cellSize;
+    this.gridX = (W - gridW) / 2;
+    this.gridY = BALANCE.pegGridTopOffset;
+    this.dropZoneH = 70;
+    this.settleY = this.gridY + gridH + 10;
+    // 竖屏空间富裕时，把网格整体下移使顶部/底部留白更均衡
+    if (H > 800) {
+      const extra = (H - this.dropZoneH - gridH - 120) / 2;
+      this.gridY = Math.max(BALANCE.pegGridTopOffset, this.dropZoneH + 10 + extra);
+      this.settleY = this.gridY + gridH + 10;
+    }
 
     // 六边形蜂窝网格背景：点阵
     const gridBg = this.add.graphics();
@@ -118,20 +130,17 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.add.rectangle(
-      GRID_X + BALANCE.gridCols * BALANCE.cellSize / 2,
-      GRID_Y + BALANCE.gridRows * BALANCE.cellSize / 2,
+      this.gridX + BALANCE.gridCols * BALANCE.cellSize / 2,
+      this.gridY + BALANCE.gridRows * BALANCE.cellSize / 2,
       BALANCE.gridCols * BALANCE.cellSize,
       BALANCE.gridRows * BALANCE.cellSize,
       0x000000, 0.2,
     ).setStrokeStyle(1, 0x30363d).setDepth(-1);
 
-    // 投放区
-    this.dropZoneRect = this.add.rectangle(W / 2, DROP_ZONE_H / 2, W, DROP_ZONE_H, 0x161b22, 0.4)
+    // 投放区（保留可点击区域，但不显示提示文字）
+    this.dropZoneRect = this.add.rectangle(W / 2, this.dropZoneH / 2, W, this.dropZoneH, 0x161b22, 0.4)
       .setStrokeStyle(1, 0xf0b429, 0.5);
-    this.dropZoneRect.setInteractive(new Phaser.Geom.Rectangle(0, 0, W, DROP_ZONE_H), Phaser.Geom.Rectangle.Contains);
-    this.add.text(W / 2, DROP_ZONE_H / 2, '点击此处投下弹珠 ↓', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '14px', color: '#f0b429',
-    }).setOrigin(0.5).setAlpha(0.7);
+    this.dropZoneRect.setInteractive(new Phaser.Geom.Rectangle(0, 0, W, this.dropZoneH), Phaser.Geom.Rectangle.Contains);
 
     // 结算槽
     this.settleSlots = [];
@@ -140,9 +149,9 @@ export class GameScene extends Phaser.Scene {
       const x = 20 + slotW * (i + 0.5);
       const isCenter = i === Math.floor(BALANCE.bottomSlots / 2);
       const color = isCenter ? 0xf0b429 : 0x2db7a3;
-      const rect = this.add.rectangle(x, SETTLE_Y + 20, slotW - 8, 40, color, 0.15).setStrokeStyle(2, color, 0.8);
+      const rect = this.add.rectangle(x, this.settleY + 20, slotW - 8, 40, color, 0.15).setStrokeStyle(2, color, 0.8);
       this.settleSlots.push(rect);
-      this.add.text(x, SETTLE_Y + 20, isCenter ? '×2' : '×1', {
+      this.add.text(x, this.settleY + 20, isCenter ? '×2' : '×1', {
         fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '14px', color: isCenter ? '#f0b429' : '#2db7a3',
       }).setOrigin(0.5);
     }
@@ -165,10 +174,10 @@ export class GameScene extends Phaser.Scene {
     // 左墙 X = GRID_X - wallW/2，右墙 X = GRID_X + gridCols*cellSize + wallW/2
     const wallRestitution = 0.7 + GameState.getSkillLevel('wallBounce') * 0.08;
     const wallW = 8;
-    const gridLeftX = GRID_X;
-    const gridRightX = GRID_X + BALANCE.gridCols * BALANCE.cellSize;
-    const wallTopY = GRID_Y - 10;
-    const wallBottomY = SETTLE_Y + 30;
+    const gridLeftX = this.gridX;
+    const gridRightX = this.gridX + BALANCE.gridCols * BALANCE.cellSize;
+    const wallTopY = this.gridY - 10;
+    const wallBottomY = this.settleY + 30;
     const wallH = wallBottomY - wallTopY;
 
     // 左墙视觉
@@ -211,8 +220,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.y < DROP_ZONE_H) return;
-      if (pointer.y > SETTLE_Y + 40) return;
+      if (pointer.y < this.dropZoneH) return;
+      if (pointer.y > this.settleY + 40) return;
       if (this.placementMode.typeId) {
         const grid = this.pixelToGrid(pointer.x, pointer.y);
         if (grid) {
@@ -369,7 +378,7 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const ball = this.balls[i];
       // 落底结算
-      if (ball.sprite.y > SETTLE_Y + 50) {
+      if (ball.sprite.y > this.settleY + 50) {
         this.settleBall(ball);
         this.destroyBall(i);
         continue;
