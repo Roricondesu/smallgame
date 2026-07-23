@@ -50,6 +50,7 @@ export class GameScene extends Phaser.Scene {
   private hud!: HUD;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
+  private settleTexts: Phaser.GameObjects.Text[] = [];
   private comboDisplay!: Phaser.GameObjects.Text;
   private frenzyOverlay!: Phaser.GameObjects.Rectangle;
   private placementCursor: Phaser.GameObjects.Arc | null = null;
@@ -66,7 +67,14 @@ export class GameScene extends Phaser.Scene {
   // 球上次撞墙时间，避免连续结算
   private ballWallCooldown = new WeakMap<Ball, number>();
 
-  // 网格布局参数：在 create() 中根据画布尺寸动态计算，使游戏内容居中
+  // 布局相关引用（resize 时需重新定位的元素）
+  private gridBg!: Phaser.GameObjects.Graphics;
+  private gridBgRect!: Phaser.GameObjects.Rectangle;
+  private wallVisuals: Phaser.GameObjects.Rectangle[] = [];
+  private wallBodies: MatterJS.Body[] = [];
+  private readonly wallW = 8;
+
+  // 网格布局参数：在 computeLayout 中根据画布尺寸动态计算，使游戏内容居中
   private gridX = 0;
   private gridY = 0;
   private dropZoneH = 70;
@@ -99,85 +107,46 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width, H = this.scale.height;
+    // 先计算布局参数（gridX/gridY/settleY），再创建元素，最后 applyLayout 统一定位
+    this.computeLayout();
 
-    // 网格居中：根据当前画布尺寸计算 GRID_X/Y，让 12×16 网格水平居中、垂直留出顶部投放区与底部结算区
-    const gridWidth = BALANCE.gridCols * BALANCE.cellSize;
-    const gridH = BALANCE.gridRows * BALANCE.cellSize;
-    this.gridX = (W - gridWidth) / 2;
-    this.gridY = BALANCE.pegGridTopOffset;
-    this.dropZoneH = 70;
-    this.settleY = this.gridY + gridH + 10;
-    // 竖屏空间富裕时，把网格整体下移使顶部/底部留白更均衡
-    if (H > 800) {
-      const extra = (H - this.dropZoneH - gridH - 120) / 2;
-      this.gridY = Math.max(BALANCE.pegGridTopOffset, this.dropZoneH + 10 + extra);
-      this.settleY = this.gridY + gridH + 10;
-    }
+    // 六边形蜂窝网格背景容器（点阵 + 半透明底板），drawGridBg 在 applyLayout 中绘制
+    this.gridBg = this.add.graphics();
+    this.gridBgRect = this.add.rectangle(0, 0, 0, 0, 0x000000, 0.2).setStrokeStyle(1, 0x30363d).setDepth(-1);
 
-    // 六边形蜂窝网格背景：点阵
-    const gridBg = this.add.graphics();
-    gridBg.fillStyle(0xffffff, 0.04);
-    for (let gy = 0; gy < BALANCE.gridRows; gy++) {
-      const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
-      for (let gx = 0; gx < maxCol; gx++) {
-        const { x, y } = this.gridToPixel(gx, gy);
-        gridBg.fillCircle(x, y, 3);
-      }
-    }
-    this.add.rectangle(
-      this.gridX + BALANCE.gridCols * BALANCE.cellSize / 2,
-      this.gridY + BALANCE.gridRows * BALANCE.cellSize / 2,
-      BALANCE.gridCols * BALANCE.cellSize,
-      BALANCE.gridRows * BALANCE.cellSize,
-      0x000000, 0.2,
-    ).setStrokeStyle(1, 0x30363d).setDepth(-1);
-
-    // 投放区不再绘制卡片：点击网格区域内任意位置即可放球
-
-    // 结算槽：与钉子网格左右对齐，避免球被墙挡住却落到墙外的判定区
+    // 结算槽容器（空壳，repositionSettleSlots 在 applyLayout 中定位）
     this.settleSlots = [];
-    const gridW = BALANCE.gridCols * BALANCE.cellSize;
-    const slotW = gridW / BALANCE.bottomSlots;
+    this.settleTexts = [];
     for (let i = 0; i < BALANCE.bottomSlots; i++) {
-      const x = this.gridX + slotW * (i + 0.5);
       const isCenter = i === Math.floor(BALANCE.bottomSlots / 2);
       const color = isCenter ? 0xf0b429 : 0x2db7a3;
-      const rect = this.add.rectangle(x, this.settleY + 20, slotW - 8, 40, color, 0.15).setStrokeStyle(2, color, 0.8);
+      const rect = this.add.rectangle(0, 0, 0, 0, color, 0.15).setStrokeStyle(2, color, 0.8);
       this.settleSlots.push(rect);
-      this.add.text(x, this.settleY + 20, isCenter ? '×2' : '×1', {
+      const txt = this.add.text(0, 0, isCenter ? '×2' : '×1', {
         fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '14px', color: isCenter ? '#f0b429' : '#2db7a3',
       }).setOrigin(0.5);
+      this.settleTexts.push(txt);
     }
+
+    // 墙体视觉容器（空壳，rebuildWalls 在 applyLayout 中定位）
+    this.wallVisuals = [
+      this.add.rectangle(0, 0, 0, 0, 0x30363d).setStrokeStyle(1, 0x484f58),
+      this.add.rectangle(0, 0, 0, 0, 0x30363d).setStrokeStyle(1, 0x484f58),
+    ];
 
     // Matter 物理：调整重力
     const gravityMul = 1 + (GameState.getSkillLevel('gravity') || 0) * 0.1;
     this.matter.world.setGravity(0, gravityMul);
 
-    // 左右边墙：放在钉子网格边界两侧，仅覆盖钉子区域高度
-    // 左墙 X = GRID_X - wallW/2，右墙 X = GRID_X + gridCols*cellSize + wallW/2
-    const wallRestitution = 0.7 + GameState.getSkillLevel('wallBounce') * 0.08;
-    const wallW = 8;
-    const gridLeftX = this.gridX;
-    const gridRightX = this.gridX + BALANCE.gridCols * BALANCE.cellSize;
-    const wallTopY = 0;
-    const wallBottomY = this.settleY + 30;
-    const wallH = wallBottomY - wallTopY;
+    // 统一应用布局：绘制网格背景、定位结算槽、重建墙体物理体、设置 Matter 边界
+    this.applyLayout();
 
-    // 左墙视觉
-    this.add.rectangle(gridLeftX - wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, 0x30363d)
-      .setStrokeStyle(1, 0x484f58);
-    this.add.rectangle(gridRightX + wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, 0x30363d)
-      .setStrokeStyle(1, 0x484f58);
-    // 左墙物理体
-    const leftWall = this.matter.add.rectangle(gridLeftX - wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, {
-      isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
-    });
-    const rightWall = this.matter.add.rectangle(gridRightX + wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, {
-      isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
-    });
-    if (leftWall) this.wallLabels.add(leftWall as MatterJS.Body);
-    if (rightWall) this.wallLabels.add(rightWall as MatterJS.Body);
+    // 连击显示 & 狂热 overlay（applyLayout 会跟随画布尺寸重定位）
+    const W = this.scale.width, H = this.scale.height;
+    this.comboDisplay = this.add.text(W - 20, 80, '', {
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '16px', color: '#f0b429',
+    }).setOrigin(1, 0).setAlpha(0);
+    this.frenzyOverlay = this.add.rectangle(0, 0, W, H, 0xf0b429, 0).setOrigin(0).setDepth(99);
 
     // 加载钉子（真实）
     const occupied = new Set<string>();
@@ -235,14 +204,6 @@ export class GameScene extends Phaser.Scene {
     });
     this.hud.mount();
 
-    // 连击显示
-    this.comboDisplay = this.add.text(W - 20, 80, '', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '16px', color: '#f0b429',
-    }).setOrigin(1, 0).setAlpha(0);
-
-    // 狂热 overlay
-    this.frenzyOverlay = this.add.rectangle(0, 0, W, H, 0xf0b429, 0).setOrigin(0).setDepth(99);
-
     // 事件监听
     bus.on(EVT.ACTIVE_TRIGGERED, (payload: unknown) => {
       const p = payload as { skillId: string; duration: number };
@@ -272,11 +233,122 @@ export class GameScene extends Phaser.Scene {
       this.showTutorialTip();
     }
 
+    // 画布尺寸变化时重新布局（窗口缩放 / 设备旋转）
+    this.scale.on('resize', this.onResize, this);
+
     this.events.on('shutdown', () => {
       GameState.saveGame();
       this.hud.unmount();
+      this.scale.off('resize', this.onResize, this);
     });
     this.events.on('pause', () => GameState.saveGame());
+  }
+
+  // 根据当前画布尺寸计算网格布局参数：12×16 网格水平居中，垂直留出顶部投放区与底部结算区
+  private computeLayout() {
+    const W = this.scale.width, H = this.scale.height;
+    const gridWidth = BALANCE.gridCols * BALANCE.cellSize;
+    const gridH = BALANCE.gridRows * BALANCE.cellSize;
+    this.gridX = (W - gridWidth) / 2;
+    this.gridY = BALANCE.pegGridTopOffset;
+    this.dropZoneH = 70;
+    this.settleY = this.gridY + gridH + 10;
+    // 竖屏空间富裕时，把网格整体下移使顶部/底部留白更均衡
+    if (H > 800) {
+      const extra = (H - this.dropZoneH - gridH - 120) / 2;
+      this.gridY = Math.max(BALANCE.pegGridTopOffset, this.dropZoneH + 10 + extra);
+      this.settleY = this.gridY + gridH + 10;
+    }
+  }
+
+  // 重新应用布局：绘制网格背景、定位结算槽、重建墙体、重定位钉子、更新 overlay
+  private applyLayout() {
+    this.computeLayout();
+    this.drawGridBg();
+    this.repositionSettleSlots();
+    this.rebuildWalls();
+    this.repositionPegs();
+    // Matter 世界边界跟随画布（左右挡墙，顶部/底部开放）
+    this.matter.world.setBounds(0, 0, this.scale.width, this.scale.height, 1, true, true, false, false);
+    if (this.frenzyOverlay) this.frenzyOverlay.setSize(this.scale.width, this.scale.height);
+    if (this.comboDisplay) this.comboDisplay.setPosition(this.scale.width - 20, 80);
+  }
+
+  // 绘制六边形蜂窝点阵 + 定位半透明底板
+  private drawGridBg() {
+    this.gridBg.clear();
+    this.gridBg.fillStyle(0xffffff, 0.04);
+    for (let gy = 0; gy < BALANCE.gridRows; gy++) {
+      const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
+      for (let gx = 0; gx < maxCol; gx++) {
+        const { x, y } = this.gridToPixel(gx, gy);
+        this.gridBg.fillCircle(x, y, 3);
+      }
+    }
+    const cx = this.gridX + BALANCE.gridCols * BALANCE.cellSize / 2;
+    const cy = this.gridY + BALANCE.gridRows * BALANCE.cellSize / 2;
+    this.gridBgRect.setPosition(cx, cy);
+    this.gridBgRect.setSize(BALANCE.gridCols * BALANCE.cellSize, BALANCE.gridRows * BALANCE.cellSize);
+  }
+
+  // 结算槽与文字跟随网格左右对齐
+  private repositionSettleSlots() {
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const slotW = gridW / BALANCE.bottomSlots;
+    for (let i = 0; i < BALANCE.bottomSlots; i++) {
+      const x = this.gridX + slotW * (i + 0.5);
+      this.settleSlots[i].setPosition(x, this.settleY + 20).setSize(slotW - 8, 40);
+      this.settleTexts[i].setPosition(x, this.settleY + 20);
+    }
+  }
+
+  // 重建墙体：销毁旧物理体并按新布局创建（静态体尺寸无法直接改，需重建）
+  private rebuildWalls() {
+    for (const b of this.wallBodies) {
+      this.matter.world.remove(b);
+    }
+    this.wallBodies = [];
+    this.wallLabels = new WeakSet<MatterJS.Body>();
+
+    const wallRestitution = 0.7 + GameState.getSkillLevel('wallBounce') * 0.08;
+    const gridLeftX = this.gridX;
+    const gridRightX = this.gridX + BALANCE.gridCols * BALANCE.cellSize;
+    const wallTopY = 0;
+    const wallBottomY = this.settleY + 30;
+    const wallH = wallBottomY - wallTopY;
+    const wallMidY = (wallTopY + wallBottomY) / 2;
+
+    // 视觉矩形重定位
+    this.wallVisuals[0].setPosition(gridLeftX - this.wallW / 2, wallMidY).setSize(this.wallW, wallH);
+    this.wallVisuals[1].setPosition(gridRightX + this.wallW / 2, wallMidY).setSize(this.wallW, wallH);
+
+    // 物理体重建
+    const leftWall = this.matter.add.rectangle(gridLeftX - this.wallW / 2, wallMidY, this.wallW, wallH, {
+      isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
+    });
+    const rightWall = this.matter.add.rectangle(gridRightX + this.wallW / 2, wallMidY, this.wallW, wallH, {
+      isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
+    });
+    if (leftWall) { this.wallBodies.push(leftWall as MatterJS.Body); this.wallLabels.add(leftWall as MatterJS.Body); }
+    if (rightWall) { this.wallBodies.push(rightWall as MatterJS.Body); this.wallLabels.add(rightWall as MatterJS.Body); }
+  }
+
+  // 所有钉子（真实 + 占位）按新布局重定位到对应网格坐标
+  private repositionPegs() {
+    for (const ps of this.pegSprites.values()) {
+      const { x, y } = this.gridToPixel(ps.gridX, ps.gridY);
+      ps.sprite.setPosition(x, y);
+      ps.text?.setPosition(x, y);
+    }
+    for (const ps of this.placeholderPegs.values()) {
+      const { x, y } = this.gridToPixel(ps.gridX, ps.gridY);
+      ps.sprite.setPosition(x, y);
+    }
+  }
+
+  private onResize(_gameSize: Phaser.Structs.Size) {
+    // 球的位置不调整，让其按物理自然下落；仅重布局静态元素
+    this.applyLayout();
   }
 
   // Matter 碰撞处理：球碰钉子或墙时触发
