@@ -129,14 +129,19 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBoundsCollision(true, true, true, false);
     this.physics.world.gravity.y = BALANCE.gravityBase * (1 + (GameState.getSkillLevel('gravity') || 0) * 0.1);
 
-    // 弹珠和钉子都用动态组：钉子设置 immovable + moves=false
-    // 这样 collider 会正确计算碰撞反弹（DynamicBody.setCircle offset 语义一致）
+    // 弹珠组（受重力）
     this.ballsGroup = this.physics.add.group();
-    this.pegsGroup = this.physics.add.group();
+    // 钉子组：immovable=true 不被推动，allowGravity=false 不受重力
+    // 关键：不用 moves=false（会让引擎跳过碰撞响应），改用 allowGravity=false
+    this.pegsGroup = this.physics.add.group({
+      immovable: true,
+      allowGravity: false,
+    });
 
     this.physics.add.collider(this.ballsGroup, this.pegsGroup, (ballObj, pegObj) => {
       const ball = this.balls.find((b) => b.sprite === ballObj);
-      const ps = [...this.pegSprites.values()].find((p) => p.sprite === pegObj);
+      const ps = [...this.pegSprites.values()].find((p) => p.sprite === pegObj)
+        || [...this.placeholderPegs.values()].find((p) => p.sprite === pegObj);
       if (ball && ps) this.onBallPeg(ball, ps);
     }, undefined, this);
 
@@ -351,12 +356,14 @@ export class GameScene extends Phaser.Scene {
     const golden = GameState.isSkillActive('goldenRain');
     const texture = this.ballTextureFor(value, golden);
     const sprite = this.physics.add.image(x, y, texture);
-    // 先设显示尺寸，再设圆形碰撞体，确保弹珠与钉子正确碰撞反弹
+    // 先设显示尺寸，再设圆形碰撞体（不传 offset，让圆心居中于 sprite）
     sprite.setDisplaySize(16, 16);
-    sprite.setCircle(7, 1, 1);
+    sprite.setCircle(7);
     sprite.setCollideWorldBounds(true);
     sprite.setBounce(0.92); // 高弹性
     sprite.setVelocityY(50);
+    // 微量水平随机，避免球垂直堆叠
+    sprite.setVelocityX(Phaser.Math.Between(-20, 20));
 
     if (GameState.isSkillActive('slowdown')) {
       sprite.setVelocity(sprite.body!.velocity.x * 0.5, sprite.body!.velocity.y * 0.5);
@@ -470,13 +477,11 @@ export class GameScene extends Phaser.Scene {
 
   // ===== 钉子 =====
   private makePegSprite(x: number, y: number, texKey: string): Phaser.Physics.Arcade.Image {
-    // 用动态 body 创建钉子：immovable 让钉子不被推动，moves=false 让钉子不受重力影响
-    const sprite = this.physics.add.image(x, y, texKey);
+    // 用 group.create 让 group 的 immovable/allowGravity 配置自动应用
+    const sprite = this.pegsGroup.create(x, y, texKey) as Phaser.Physics.Arcade.Image;
     sprite.setDisplaySize(18, 18);
-    sprite.setCircle(9, 0, 0);
-    sprite.setImmovable(true);
-    sprite.body!.moves = false;
-    this.pegsGroup.add(sprite);
+    // 圆形碰撞体（不传 offset，圆心自动居中于 sprite）
+    sprite.setCircle(9);
     return sprite;
   }
 
