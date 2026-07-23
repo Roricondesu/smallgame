@@ -1,7 +1,7 @@
 // 主菜单：标题、新游戏/继续、数晶商店
 
 import Phaser from 'phaser';
-import { GameState, formatNum } from '../systems/GameState';
+import { GameState, formatNum, toBig } from '../systems/GameState';
 import { SaveSystem } from '../systems/SaveSystem';
 import { CRYSTAL_UPGRADES } from '../data/chapters';
 import { svgIcon, type IconKey } from '../ui/icons';
@@ -105,7 +105,7 @@ export class MenuScene extends Phaser.Scene {
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
       const lvl = GameState.getCrystalLevel(cfg.id);
-      const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
+      const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));
       const afford = GameState.crystal >= cost;
       const maxed = lvl >= cfg.maxLevel;
       const el = document.createElement('div');

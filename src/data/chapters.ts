@@ -5,23 +5,23 @@ import type { ChapterConfig, AutoDropperConfig, CrystalUpgrade } from '../types'
 export const CHAPTERS: ChapterConfig[] = [
   {
     id: 1, name: '学徒之始', scene: '零号镇 · 北境小村',
-    targetGold: 1e6, bg: 0x1a1025, accent: '#ff8c42',
+    targetGold: 100000000n, bg: 0x1a1025, accent: '#ff8c42',
   },
   {
     id: 2, name: '符文觉醒', scene: '贤者遗迹 · 古老弹珠机废墟',
-    targetGold: 1e8, bg: 0x0a1a2a, accent: '#5ad1ff',
+    targetGold: 10000000000n, bg: 0x0a1a2a, accent: '#5ad1ff',
   },
   {
     id: 3, name: '熵的预兆', scene: '金辉城 · 繁华都市',
-    targetGold: 1e10, bg: 0x2a1a0a, accent: '#ffcc33',
+    targetGold: 1000000000000n, bg: 0x2a1a0a, accent: '#ffcc33',
   },
   {
     id: 4, name: '归零之途', scene: '零之圣殿 · 极北圣地',
-    targetGold: 1e12, bg: 0x101820, accent: '#ccccff',
+    targetGold: 100000000000000n, bg: 0x101820, accent: '#ccccff',
   },
   {
     id: 5, name: '贤者归来', scene: '无限回廊 · 贤者机器核心',
-    targetGold: 1e15, bg: 0x0a0a12, accent: '#aa88ff',
+    targetGold: 100000000000000000n, bg: 0x0a0a12, accent: '#aa88ff',
   },
 ];
 

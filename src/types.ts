@@ -17,10 +17,11 @@ export interface AutoDropperSave {
 export interface SaveData {
   version: string;
   chapterId: number;
-  gold: number;
-  totalGold: number;
-  crystal: number;
-  ballInitialValue: number;
+  // 大数值字段用 BigInt（内部已 ×100 缩放，保留两位小数精度）
+  gold: bigint;
+  totalGold: bigint;
+  crystal: bigint;
+  ballInitialValue: bigint;
   pegs: PegSave[];
   autoDroppers: Record<string, AutoDropperSave>;
   skillLevels: Record<string, number>;
@@ -30,8 +31,8 @@ export interface SaveData {
   stats: {
     totalBalls: number;
     totalPegsPlaced: number;
-    totalGoldEarned: number;
-    highestBallValue: number;
+    totalGoldEarned: bigint;
+    highestBallValue: bigint;
   };
 }
 
@@ -94,7 +95,7 @@ export interface ChapterConfig {
   id: number;
   name: string;
   scene: string;
-  targetGold: number;
+  targetGold: bigint;
   bg: number;
   accent: string;
 }

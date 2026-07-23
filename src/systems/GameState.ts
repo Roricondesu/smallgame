@@ -1,4 +1,6 @@
 // 游戏核心状态。所有玩法规则集中在这里，Phaser 场景只负责渲染与输入。
+// 所有"原始数值"（gold/ballValue 等）在内部以 BigInt × SCALE 存储，支持任意大数。
+// BigInt 工具与精度逻辑统一由 BigNum.ts 提供，本文件仅 re-export 以保持调用方兼容。
 
 import { SaveSystem } from './SaveSystem';
 import { bus, EVT } from './EventBus';
@@ -7,63 +9,18 @@ import { SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
 import { CHAPTERS, CHAPTER_MAP, AUTO_MAP, CRYSTAL_MAP } from '../data/chapters';
 import type { SaveData, PegSave, AutoDropperSave } from '../types';
 import { BALANCE } from '../types';
+import {
+  SCALE,
+  toBig,
+  fromBig,
+  bigMulNum,
+  bigAddNum,
+  bigPow,
+  formatNum,
+  shortNum,
+} from './BigNum';
 
-const MAX_NUMBER = Number.MAX_VALUE; // ≈ 1.797e308，不再提前截断
-
-// 安全加法/乘法，防止 Infinity
-export function safeAdd(a: number, b: number): number {
-  const r = a + b;
-  if (!isFinite(r) || r > MAX_NUMBER) return MAX_NUMBER;
-  return r;
-}
-export function safeMul(a: number, b: number): number {
-  const r = a * b;
-  if (!isFinite(r) || r > MAX_NUMBER) return MAX_NUMBER;
-  return r;
-}
-
-export function formatNum(n: number): string {
-  if (!isFinite(n)) return '∞';
-  if (n < 1) return '0';
-  if (n < 1000) {
-    if (Number.isInteger(n)) return String(n);
-    return n.toFixed(1);
-  }
-  // 字母表示：1e3=A, 1e6=B, ..., 1e78=Z, 1e81=AA, 1e84=AB...
-  // 大数会自动进位到 AQ, BR, CZA 等多字母组合
-  let k = Math.floor(Math.log10(n) / 3);
-  if (k < 1) k = 1;
-  let val = n / Math.pow(1000, k);
-  while (val < 1 && k > 1) { val *= 1000; k--; }
-  while (val >= 1000) { val /= 1000; k++; }
-  return val.toFixed(2) + suffix(k);
-}
-
-export function shortNum(n: number): string {
-  if (!isFinite(n)) return '∞';
-  if (n < 1000) return String(Math.floor(n));
-  let k = Math.floor(Math.log10(n) / 3);
-  if (k < 1) k = 1;
-  let val = n / Math.pow(1000, k);
-  while (val < 1 && k > 1) { val *= 1000; k--; }
-  while (val >= 1000) { val /= 1000; k++; }
-  return val.toFixed(1) + suffix(k);
-}
-
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-// k 是 1000 的幂次：1=A, 2=B, ..., 26=Z, 27=AA, 28=AB...
-function suffix(k: number): string {
-  if (k <= 0) return '';
-  let s = '';
-  let n = k;
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    s = LETTERS[rem] + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
+export { SCALE, toBig, fromBig, bigMulNum, bigAddNum, bigPow, formatNum, shortNum };
 
 class ActiveState {
   private actives: Map<string, { start: number; duration: number; cooldownStart: number; cooldown: number }> = new Map();
@@ -122,23 +79,23 @@ class GameStateClass {
   }
 
   // ===== 金币 =====
-  addGold(n: number, _source: 'ball' | 'offline' = 'ball') {
-    this._save.gold = safeAdd(this._save.gold, n);
-    this._save.totalGold = safeAdd(this._save.totalGold, n);
-    this._save.stats.totalGoldEarned = safeAdd(this._save.stats.totalGoldEarned, n);
+  addGold(n: bigint, _source: 'ball' | 'offline' = 'ball') {
+    this._save.gold += n;
+    this._save.totalGold += n;
+    this._save.stats.totalGoldEarned += n;
     bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     this.checkChapterGoal();
   }
 
-  spendGold(n: number): boolean {
+  spendGold(n: bigint): boolean {
     if (this._save.gold < n) return false;
     this._save.gold -= n;
     bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     return true;
   }
 
-  addCrystal(n: number) {
-    this._save.crystal = safeAdd(this._save.crystal, n);
+  addCrystal(n: bigint) {
+    this._save.crystal += n;
     bus.emit(EVT.CRYSTAL_CHANGED, this._save.crystal);
   }
 
@@ -179,7 +136,7 @@ class GameStateClass {
     }
 
     const count = this._save.pegs.filter((p) => p.typeId === typeId).length;
-    const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, count));
+    const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, count)));
     if (!this.spendGold(cost)) {
       bus.emit(EVT.TOAST, '金币不足');
       return null;
@@ -207,7 +164,7 @@ class GameStateClass {
       return false;
     }
 
-    const cost = Math.floor(cfg.baseCost * 0.5 * Math.pow(cfg.costGrowth, peg.level));
+    const cost = toBig(Math.floor(cfg.baseCost * 0.5 * Math.pow(cfg.costGrowth, peg.level)));
     if (!this.spendGold(cost)) {
       bus.emit(EVT.TOAST, '金币不足');
       return false;
@@ -217,21 +174,21 @@ class GameStateClass {
     return true;
   }
 
-  sellPeg(pegId: string): number {
+  sellPeg(pegId: string): bigint {
     const idx = this._save.pegs.findIndex((p) => p.id === pegId);
-    if (idx < 0) return 0;
+    if (idx < 0) return 0n;
     const peg = this._save.pegs[idx];
     const cfg = PEG_MAP[peg.typeId];
     let total = cfg.baseCost;
     for (let i = 1; i < peg.level; i++) total += Math.floor(cfg.baseCost * 0.5 * Math.pow(cfg.costGrowth, i));
-    const back = Math.floor(total * BALANCE.sellReturnRate);
+    const back = toBig(Math.floor(total * BALANCE.sellReturnRate));
     this._save.pegs.splice(idx, 1);
     this.addGold(back);
     bus.emit(EVT.PEG_SOLD, pegId);
     return back;
   }
 
-  computePeg(peg: PegSave, value: number, goldenMul = 1): { value: number; crit: boolean } {
+  computePeg(peg: PegSave, value: bigint, goldenMul = 1): { value: bigint; crit: boolean } {
     const cfg = PEG_MAP[peg.typeId];
     let v = value;
     let crit = false;
@@ -240,45 +197,48 @@ class GameStateClass {
     if (Math.random() < critChance) {
       crit = true;
       const critMul = 2 + this.getSkillLevel('critDmg') * 0.25;
-      v = safeMul(v, critMul);
+      v = bigMulNum(v, critMul);
     }
 
     switch (cfg.operator) {
       case '+':
-        v = safeAdd(v, cfg.operand + (peg.level - 1) * cfg.growth);
+        v = bigAddNum(v, cfg.operand + (peg.level - 1) * cfg.growth);
         break;
       case '*':
-        v = safeMul(v, cfg.operand + (peg.level - 1) * cfg.growth);
+        v = bigMulNum(v, cfg.operand + (peg.level - 1) * cfg.growth);
         break;
-      case '/':
-        v = Math.max(1, Math.floor(v / cfg.operand));
+      case '/': {
+        // 整数除法：v / operand（operand 是 number 小数，先转 bigint）
+        const divisor = toBig(cfg.operand);
+        if (divisor > 0n) v = v / divisor;
+        if (v < SCALE) v = SCALE; // 最少保留 1（缩放值 100）
         break;
+      }
       case '^': {
         // 指数钉：v = v^exponent，exponent = operand + (level-1) * growth
-        // 例如 1.1 + (level-1) * 0.1。用 Math.pow 而非 v*v，避免大数平方爆炸到 Infinity
         const exponent = cfg.operand + (peg.level - 1) * cfg.growth;
-        const r = Math.pow(v, exponent);
-        v = safeMul(r, 1); // 通过 safeMul clamp 到 MAX_NUMBER，防 Infinity
+        v = bigPow(v, exponent);
         break;
       }
       case '%':
         break;
       case 'addPercent':
-        v = safeAdd(v, v * (cfg.operand + (peg.level - 1) * cfg.growth));
+        // v += v * percent
+        v = v + bigMulNum(v, cfg.operand + (peg.level - 1) * cfg.growth);
         break;
       case 'maxMul': {
         const mul = Math.max(2, 3 + (peg.level - 1) * cfg.growth);
-        v = safeMul(v, mul);
+        v = bigMulNum(v, mul);
         break;
       }
     }
 
-    v = safeMul(v, goldenMul);
+    v = bigMulNum(v, goldenMul);
 
     const goldMul = BALANCE.goldMulBase + this.getSkillLevel('goldBonus') * 0.05 + this.getCrystalLevel('goldBonus') * 0.02;
-    if (goldMul > 1) v = safeMul(v, goldMul);
+    if (goldMul > 1) v = bigMulNum(v, goldMul);
 
-    return { value: Math.floor(v), crit };
+    return { value: v, crit };
   }
 
   // ===== 技能 =====
@@ -326,7 +286,7 @@ class GameStateClass {
       bus.emit(EVT.TOAST, '技能已满级');
       return false;
     }
-    const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
+    const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));
     if (!this.spendGold(cost)) {
       bus.emit(EVT.TOAST, '金币不足');
       return false;
@@ -340,11 +300,11 @@ class GameStateClass {
     return true;
   }
 
-  computeInitialValue(): number {
+  computeInitialValue(): bigint {
     const base = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
     const lvl = this.getSkillLevel('initialValue');
-    if (lvl < base.length) return base[lvl];
-    return base[base.length - 1] * Math.pow(2, lvl - base.length + 1);
+    if (lvl < base.length) return toBig(base[lvl]);
+    return toBig(base[base.length - 1] * Math.pow(2, lvl - base.length + 1));
   }
 
   triggerActive(id: string): boolean {
@@ -383,18 +343,18 @@ class GameStateClass {
     return this._save.autoDroppers[id] || { count: 0, speedLevel: 0 };
   }
 
-  getAutoDropperCost(id: string): number {
+  getAutoDropperCost(id: string): bigint {
     const cfg = AUTO_MAP[id];
-    if (!cfg) return Infinity;
+    if (!cfg) return 0n;
     const info = this.getAutoDropperInfo(id);
-    return Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, info.count));
+    return toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, info.count)));
   }
 
-  getAutoDropperSpeedUpgradeCost(id: string): number {
+  getAutoDropperSpeedUpgradeCost(id: string): bigint {
     const cfg = AUTO_MAP[id];
-    if (!cfg) return Infinity;
+    if (!cfg) return 0n;
     const info = this.getAutoDropperInfo(id);
-    return Math.floor(cfg.speedUpgradeCost * Math.pow(cfg.speedUpgradeGrowth, info.speedLevel));
+    return toBig(Math.floor(cfg.speedUpgradeCost * Math.pow(cfg.speedUpgradeGrowth, info.speedLevel)));
   }
 
   /** 前置是否满足：自动器看购买数量 */
@@ -492,7 +452,7 @@ class GameStateClass {
     }
     const lvl = this.getCrystalLevel(id);
     if (lvl >= cfg.maxLevel) return false;
-    const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
+    const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));
     if (this._save.crystal < cost) {
       bus.emit(EVT.TOAST, '数晶不足');
       return false;
@@ -521,19 +481,21 @@ class GameStateClass {
 
   prestige(nextChapter: number) {
     const crystalGainMul = 1 + this.getCrystalLevel('crystalGain') * 0.05;
-    const crystalGain = Math.floor(this._save.totalGold / 1e6 * crystalGainMul);
-    this._save.crystal = safeAdd(this._save.crystal, Math.max(1, crystalGain));
+    // totalGold / 1e6 × crystalGainMul，全在 bigint 域
+    const totalGoldNum = fromBig(this._save.totalGold);
+    const crystalGain = Math.max(1, Math.floor(totalGoldNum / 1e6 * crystalGainMul));
+    this._save.crystal += toBig(crystalGain);
     this._save.chapterId = Math.min(5, nextChapter);
-    this._save.gold = this.getCrystalLevel('startGold') * 1000;
-    this._save.totalGold = 0;
+    this._save.gold = toBig(this.getCrystalLevel('startGold') * 1000);
+    this._save.totalGold = 0n;
     this._save.pegs = [];
     this._save.autoDroppers = {};
     this._save.skillLevels = {};
-    this._save.ballInitialValue = 1;
+    this._save.ballInitialValue = toBig(1);
     this._save.storyProgress = `ch${this._save.chapterId}_ready`;
     bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     bus.emit(EVT.CRYSTAL_CHANGED, this._save.crystal);
-    bus.emit(EVT.BALL_VALUE_CHANGED, 1);
+    bus.emit(EVT.BALL_VALUE_CHANGED, this._save.ballInitialValue);
     bus.emit(EVT.CHAPTER_CHANGED, this._save.chapterId);
     this.saveGame();
   }
@@ -543,7 +505,7 @@ class GameStateClass {
     this._save.stats.totalBalls++;
   }
 
-  onBallSettled(value: number) {
+  onBallSettled(value: bigint) {
     if (value > this._save.stats.highestBallValue) {
       this._save.stats.highestBallValue = value;
     }
@@ -561,10 +523,10 @@ class GameStateClass {
   // ===== 离线 =====
   applyOffline() {
     const { gold, seconds } = SaveSystem.calculateOffline(this._save);
-    if (gold > 0) {
-      this._save.gold = safeAdd(this._save.gold, gold);
-      this._save.totalGold = safeAdd(this._save.totalGold, gold);
-      this._save.stats.totalGoldEarned = safeAdd(this._save.stats.totalGoldEarned, gold);
+    if (gold > 0n) {
+      this._save.gold += gold;
+      this._save.totalGold += gold;
+      this._save.stats.totalGoldEarned += gold;
       bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     }
     this._save.lastSeen = Date.now();

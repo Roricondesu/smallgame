@@ -1,6 +1,6 @@
 // DOM 层 HUD：现代深色像素 UI，SVG 图标，事件驱动更新
 
-import { GameState, formatNum } from '../systems/GameState';
+import { GameState, formatNum, toBig, fromBig } from '../systems/GameState';
 import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
 import { SKILLS, SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
@@ -176,7 +176,13 @@ export class HUD {
   private updateChapterProgress() {
     const ch = GameState.chapter;
     document.getElementById('chapter-name')!.textContent = `第 ${ch.id} 章 · ${ch.name}`;
-    const progress = Math.min(1, GameState.save.totalGold / ch.targetGold);
+    // bigint 比较避免大数精度问题；未达标时用 fromBig 估算比例
+    let progress: number;
+    if (GameState.save.totalGold >= ch.targetGold) progress = 1;
+    else {
+      const tg = fromBig(ch.targetGold);
+      progress = isFinite(tg) && tg > 0 ? Math.min(1, fromBig(GameState.save.totalGold) / tg) : 0;
+    }
     document.getElementById('chapter-progress')!.style.width = `${progress * 100}%`;
   }
 
@@ -201,7 +207,7 @@ export class HUD {
 
       const prereqMet = GameState.isPegPrereqMet(cfg);
       const count = GameState.pegs.filter((p) => p.typeId === cfg.id).length;
-      const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, count));
+      const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, count)));
       const afford = GameState.gold >= cost;
       const selected = this.selectedPegType === cfg.id;
 
@@ -305,7 +311,7 @@ export class HUD {
       if (cfg.unlockChapter > GameState.chapterId) continue;
 
       const lvl = GameState.getCrystalLevel(cfg.id);
-      const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
+      const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));
       const afford = GameState.crystal >= cost;
       const maxed = lvl >= cfg.maxLevel;
       const el = document.createElement('div');
@@ -349,7 +355,7 @@ export class HUD {
       const lvl = GameState.getSkillLevel(cfg.id);
       const maxLevel = GameState.getSkillMaxLevel(cfg);
       const maxed = lvl >= maxLevel;
-      const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
+      const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));
       const afford = GameState.gold >= cost;
 
       // 前置未达成的锁定文案

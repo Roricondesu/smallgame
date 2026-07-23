@@ -3,7 +3,7 @@
 // restitution 控制弹力，collider 自动计算反弹
 
 import Phaser from 'phaser';
-import { GameState, formatNum } from '../systems/GameState';
+import { GameState, formatNum, bigMulNum } from '../systems/GameState';
 import { PEG_MAP } from '../data/pegs';
 import { ACTIVE_SKILLS } from '../data/skills';
 import { bus, EVT } from '../systems/EventBus';
@@ -15,10 +15,10 @@ import { BALANCE } from '../types';
 interface Ball {
   sprite: Phaser.Physics.Matter.Image;
   text: Phaser.GameObjects.Text;
-  value: number;
+  value: bigint;
   source: 'manual' | 'auto';
   golden: boolean;
-  sageCopy: number;
+  sageCopy: bigint;
   lastPegId?: string;
   stuckSince?: number;
 }
@@ -356,8 +356,8 @@ export class GameScene extends Phaser.Scene {
     const wallBonusLvl = GameState.getSkillLevel('wallBonus');
     if (wallBonusLvl <= 0) return;
 
-    const bonus = Math.floor(ball.value * wallBonusLvl * 0.04);
-    if (bonus <= 0) return;
+    const bonus = bigMulNum(ball.value, wallBonusLvl * 0.04);
+    if (bonus <= 0n) return;
     GameState.addGold(bonus);
     this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, `+${formatNum(bonus)}`, 0x56d4dd);
   }
@@ -457,7 +457,7 @@ export class GameScene extends Phaser.Scene {
     const lvl = GameState.getSkillLevel('chargeThrow');
     const init = GameState.ballInitialValue;
     let value = init;
-    if (lvl > 0) value = Math.floor(init * (1 + lvl * 0.1));
+    if (lvl > 0) value = bigMulNum(init, 1 + lvl * 0.1);
 
     const multiThrow = GameState.getSkillLevel('multiThrow');
     const count = 1 + multiThrow;
@@ -468,7 +468,7 @@ export class GameScene extends Phaser.Scene {
     GameState.onBallDropped('manual');
   }
 
-  private spawnBall(x: number, y: number, value: number, source: 'manual' | 'auto') {
+  private spawnBall(x: number, y: number, value: bigint, source: 'manual' | 'auto') {
     if (this.balls.length >= BALANCE.maxBallsBase + GameState.getSkillLevel('capacity') * 5) return;
     const golden = GameState.isSkillActive('goldenRain');
     const texture = this.ballTextureFor(value, golden);
@@ -502,18 +502,19 @@ export class GameScene extends Phaser.Scene {
       color: golden ? '#ffd700' : '#ffffff', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(5);
 
-    const ball: Ball = { sprite, text, value, source, golden, sageCopy: 0 };
+    const ball: Ball = { sprite, text, value, source, golden, sageCopy: 0n };
     this.balls.push(ball);
     this.ballBySprite.set(sprite, ball);
   }
 
-  private ballTextureFor(value: number, golden: boolean): string {
+  private ballTextureFor(value: bigint, golden: boolean): string {
     if (golden) return 'ball_golden';
-    if (value >= 1e9) return 'ball_rainbow';
-    if (value >= 1e6) return 'ball_purple';
-    if (value >= 1e3) return 'ball_gold';
-    if (value >= 100) return 'ball_green';
-    if (value >= 10) return 'ball_blue';
+    // 比较阈值用 bigint（缩放值 = 原值 × 100）
+    if (value >= 100000000000n) return 'ball_rainbow'; // 原 1e9
+    if (value >= 100000000n) return 'ball_purple';   // 原 1e6
+    if (value >= 100000n) return 'ball_gold';        // 原 1e3
+    if (value >= 10000n) return 'ball_green';   // 原 100
+    if (value >= 1000n) return 'ball_blue';     // 原 10
     return 'ball_gray';
   }
 
@@ -542,7 +543,7 @@ export class GameScene extends Phaser.Scene {
     const { value: newVal, crit } = GameState.computePeg(peg, ball.value, goldenMul);
     ball.value = newVal;
     ball.text.setText(formatNum(newVal));
-    ball.text.setColor(crit ? '#ff6b6b' : (newVal > 1e6 ? '#f0b429' : '#ffffff'));
+    ball.text.setColor(crit ? '#ff6b6b' : (newVal > 100000000n ? '#f0b429' : '#ffffff'));
 
     const opLabel = t.operator === '+' ? `+${Math.floor(t.operand + (peg.level - 1) * t.growth)}`
       : t.operator === '*' ? `×${(t.operand + (peg.level - 1) * t.growth).toFixed(1)}`
@@ -578,15 +579,15 @@ export class GameScene extends Phaser.Scene {
     const slotIdx = Math.min(BALANCE.bottomSlots - 1, Math.max(0, Math.floor((ball.sprite.x - 20) / ((this.scale.width - 40) / BALANCE.bottomSlots))));
     const isCenter = slotIdx === Math.floor(BALANCE.bottomSlots / 2);
     const multiplier = isCenter ? 2 : 1;
-    let gold = ball.value * multiplier;
+    let gold = bigMulNum(ball.value, multiplier);
 
-    if (ball.sageCopy > 0) {
-      gold += ball.sageCopy * multiplier;
+    if (ball.sageCopy > 0n) {
+      gold = gold + bigMulNum(ball.sageCopy, multiplier);
     }
 
     const combo = GameState.addCombo();
     const comboMul = 1 + Math.min(2, combo * 0.05);
-    gold = Math.floor(gold * comboMul);
+    gold = bigMulNum(gold, comboMul);
 
     GameState.addGold(gold);
     GameState.onBallSettled(ball.value);
