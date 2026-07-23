@@ -25,8 +25,8 @@ interface Ball {
 
 // Matter 钉子对象
 interface PegSprite {
-  // 真实钉子是 Matter.Image，占位钉子是 Arc（无物理体）
-  sprite: Phaser.Physics.Matter.Image | Phaser.GameObjects.Arc;
+  // 真实钉子和占位钉子都是 Matter.Image
+  sprite: Phaser.Physics.Matter.Image;
   pegId: string;
   typeId: string;
   text: Phaser.GameObjects.Text;
@@ -43,6 +43,8 @@ const SETTLE_Y = GRID_Y + BALANCE.gridRows * BALANCE.cellSize + 10;
 
 // 钉子半径（视觉与碰撞体一致）
 const PEG_RADIUS = 9;
+// 占位钉子半径（缩小，但仍参与碰撞）
+const PLACEHOLDER_RADIUS = 5;
 // 弹珠半径
 const BALL_RADIUS = 8;
 // 弹力系数（0=不弹，1=完全弹性）
@@ -65,8 +67,8 @@ export class GameScene extends Phaser.Scene {
   private pegLabels = new WeakSet<MatterJS.Body>();
   // sprite -> Ball 的映射，O(1) 查找
   private ballBySprite = new Map<Phaser.Physics.Matter.Image, Ball>();
-  // sprite -> PegSprite 的映射，O(1) 查找
-  private pegBySprite = new Map<Phaser.Physics.Matter.Image | Phaser.GameObjects.Arc, PegSprite>();
+  // sprite -> PegSprite 的映射，O(1) 查找（真实钉子和占位钉子都是 Matter.Image）
+  private pegBySprite = new Map<Phaser.Physics.Matter.Image, PegSprite>();
   // 墙体 body 集合，用于识别球撞墙
   private wallLabels = new WeakSet<MatterJS.Body>();
   // 球上次撞墙时间，避免连续结算
@@ -161,17 +163,26 @@ export class GameScene extends Phaser.Scene {
       emitting: false,
     });
 
-    // 左右边墙（可视化 + 静态矩形），墙体宽度 10px，颜色醒目
+    // 左右边墙：放在钉子网格边界两侧，仅覆盖钉子区域高度
+    // 左墙 X = GRID_X - wallW/2，右墙 X = GRID_X + gridCols*cellSize + wallW/2
     const wallRestitution = 0.7 + GameState.getSkillLevel('wallBounce') * 0.08;
-    const wallW = 10;
+    const wallW = 8;
+    const gridLeftX = GRID_X;
+    const gridRightX = GRID_X + BALANCE.gridCols * BALANCE.cellSize;
+    const wallTopY = GRID_Y - 10;
+    const wallBottomY = SETTLE_Y + 30;
+    const wallH = wallBottomY - wallTopY;
+
     // 左墙视觉
-    this.add.rectangle(wallW / 2, H / 2, wallW, H, 0x30363d).setStrokeStyle(1, 0x484f58);
-    this.add.rectangle(W - wallW / 2, H / 2, wallW, H, 0x30363d).setStrokeStyle(1, 0x484f58);
-    // 左墙物理体（标记为 wall）
-    const leftWall = this.matter.add.rectangle(wallW / 2, H / 2, wallW, H, {
+    this.add.rectangle(gridLeftX - wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, 0x30363d)
+      .setStrokeStyle(1, 0x484f58);
+    this.add.rectangle(gridRightX + wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, 0x30363d)
+      .setStrokeStyle(1, 0x484f58);
+    // 左墙物理体
+    const leftWall = this.matter.add.rectangle(gridLeftX - wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, {
       isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
     });
-    const rightWall = this.matter.add.rectangle(W - wallW / 2, H / 2, wallW, H, {
+    const rightWall = this.matter.add.rectangle(gridRightX + wallW / 2, (wallTopY + wallBottomY) / 2, wallW, wallH, {
       isStatic: true, restitution: wallRestitution, friction: 0.005, label: 'wall',
     });
     if (leftWall) this.wallLabels.add(leftWall as MatterJS.Body);
@@ -329,7 +340,6 @@ export class GameScene extends Phaser.Scene {
     const ps = this.pegBySprite.get(pegSprite);
     if (ball && ps) this.onBallPeg(ball, ps);
   }
-
   private fireBallWall(ballBody: MatterJS.Body) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ballSprite = (ballBody as any).gameObject as Phaser.Physics.Matter.Image | undefined;
@@ -649,9 +659,8 @@ export class GameScene extends Phaser.Scene {
     sprite.on('pointerout', () => sprite.setAlpha(1));
   }
 
-  // ===== 占位钉子（显示 0，可被替换，纯视觉无物理体） =====
-  // 性能优化：占位钉子只用 graphics + text 绘制，不创建 Matter body
-  // 满屏几十个占位钉子若都有物理体会严重拖慢物理引擎
+  // ===== 占位钉子（显示 0，可被替换，小碰撞体） =====
+  // 性能权衡：占位钉子仍需碰撞反弹，但缩小半径减少碰撞计算量
   private initPlaceholders(occupied: Set<string>) {
     for (let gy = 0; gy < BALANCE.gridRows; gy++) {
       const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
@@ -665,12 +674,23 @@ export class GameScene extends Phaser.Scene {
 
   private renderPlaceholder(gx: number, gy: number) {
     const { x, y } = this.gridToPixel(gx, gy);
-    // 只用 graphics 圆 + text，不创建物理体
-    const sprite = this.add.circle(x, y, PEG_RADIUS, 0x2a3038, 0.6);
-    sprite.setStrokeStyle(1, 0x3a4248);
+    // 占位钉子：Matter 静态圆形，半径缩小到 PLACEHOLDER_RADIUS
+    const sprite = this.matter.add.image(x, y, 'peg_placeholder', undefined, {
+      shape: { type: 'circle', radius: PLACEHOLDER_RADIUS },
+      isStatic: true,
+      restitution: RESTITUTION,
+      friction: 0.01,
+      label: 'peg:placeholder',
+    });
+    sprite.setDisplaySize(PLACEHOLDER_RADIUS * 2, PLACEHOLDER_RADIUS * 2);
+    sprite.setAlpha(0.5);
+    // 标记为钉子
+    if (sprite.body) {
+      this.pegLabels.add(sprite.body as MatterJS.Body);
+    }
 
     const text = this.add.text(x, y, '0', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '10px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '9px',
       color: '#7d8896', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0.6);
 
@@ -679,11 +699,13 @@ export class GameScene extends Phaser.Scene {
       text, gridX: gx, gridY: gy, placeholder: true,
     };
     this.placeholderPegs.set(this.placeholderKey(gx, gy), ps);
+    this.pegBySprite.set(sprite, ps);
   }
 
   private removePlaceholder(gx: number, gy: number) {
     const ps = this.placeholderPegs.get(this.placeholderKey(gx, gy));
     if (!ps) return;
+    this.pegBySprite.delete(ps.sprite);
     ps.sprite.destroy();
     ps.text.destroy();
     this.placeholderPegs.delete(this.placeholderKey(gx, gy));
