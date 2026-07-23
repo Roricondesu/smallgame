@@ -46,7 +46,6 @@ export interface PegConfig {
   costGrowth: number;
   color: number;
   icon: import('./ui/icons').IconKey;
-  unlockChapter: number;
   desc: string;
   maxLevel: number;
   /** 前置：需要前置钉子放置数量达到 level 才解锁，并额外 +prereqBonusLevels 等级上限 */
@@ -67,7 +66,6 @@ export interface SkillConfig {
   duration?: number;
   icon: import('./ui/icons').IconKey;
   desc: string;
-  unlockChapter: number;
   /** 前置：需要前置技能等级达到 level 才解锁，并额外 +prereqBonusLevels 等级上限 */
   prereq?: { id: string; level: number };
   prereqBonusLevels?: number;
@@ -84,7 +82,6 @@ export interface AutoDropperConfig {
   speedPerLevel: number;
   maxSpeedLevel: number;
   maxCount: number;
-  unlockChapter: number;
   icon: import('./ui/icons').IconKey;
   desc: string;
   /** 前置：需要前置自动器购买数量达到 level 才解锁 */
@@ -110,7 +107,6 @@ export interface CrystalUpgrade {
   getValue: (level: number) => number;
   icon: import('./ui/icons').IconKey;
   desc: string;
-  unlockChapter: number;
 }
 
 export const BALANCE = {

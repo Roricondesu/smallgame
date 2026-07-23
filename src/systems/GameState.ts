@@ -133,7 +133,7 @@ class GameStateClass {
 
   placePeg(typeId: string, gx: number, gy: number): PegSave | null {
     const cfg = PEG_MAP[typeId];
-    if (!cfg || cfg.unlockChapter > this._save.chapterId) return null;
+    if (!cfg) return null;
     if (!this.isPegPrereqMet(cfg)) {
       const pre = PEG_MAP[cfg.prereq!.id];
       bus.emit(EVT.TOAST, `需要先放置 ${cfg.prereq!.level} 个${pre?.name ?? cfg.prereq!.id}`);
@@ -278,17 +278,12 @@ class GameStateClass {
   isSkillUnlocked(id: string): boolean {
     const cfg = SKILL_MAP[id];
     if (!cfg) return false;
-    if (cfg.unlockChapter > this._save.chapterId) return false;
     return this.isSkillPrereqMet(cfg);
   }
 
   buySkill(id: string): boolean {
     const cfg = SKILL_MAP[id];
     if (!cfg) return false;
-    if (cfg.unlockChapter > this._save.chapterId) {
-      bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
-      return false;
-    }
     if (!this.isSkillPrereqMet(cfg)) {
       const pre = SKILL_MAP[cfg.prereq!.id];
       bus.emit(EVT.TOAST, `需要先升满 ${cfg.prereq!.level} 级${pre?.name ?? cfg.prereq!.id}`);
@@ -381,10 +376,6 @@ class GameStateClass {
   buyAutoDropper(id: string): boolean {
     const cfg = AUTO_MAP[id];
     if (!cfg) return false;
-    if (cfg.unlockChapter > this._save.chapterId) {
-      bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
-      return false;
-    }
     if (!this.isAutoPrereqMet(cfg)) {
       const pre = AUTO_MAP[cfg.prereq!.id];
       const cur = this.getAutoDropperInfo(cfg.prereq!.id).count;
@@ -454,16 +445,12 @@ class GameStateClass {
   isCrystalUnlocked(id: string): boolean {
     const cfg = CRYSTAL_MAP[id];
     if (!cfg) return false;
-    return cfg.unlockChapter <= this._save.chapterId;
+    return true;
   }
 
   buyCrystalUpgrade(id: string): boolean {
     const cfg = CRYSTAL_MAP[id];
     if (!cfg) return false;
-    if (cfg.unlockChapter > this._save.chapterId) {
-      bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
-      return false;
-    }
     const lvl = this.getCrystalLevel(id);
     if (lvl >= cfg.maxLevel) return false;
     const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));

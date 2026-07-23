@@ -213,7 +213,6 @@ export class MenuScene extends Phaser.Scene {
     const list = document.getElementById('menu-shop-list')!;
     list.innerHTML = '';
     for (const cfg of CRYSTAL_UPGRADES) {
-      if (cfg.unlockChapter > GameState.chapterId) continue;
       const lvl = GameState.getCrystalLevel(cfg.id);
       const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));
       const afford = GameState.crystal >= cost;

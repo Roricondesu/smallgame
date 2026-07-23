@@ -197,8 +197,6 @@ export class HUD {
 
   private renderPegShop(list: HTMLElement) {
     for (const cfg of PEG_TYPES) {
-      // 章节未解锁：完全隐藏
-      if (cfg.unlockChapter > GameState.chapterId) continue;
       // 直接前置本身的前置未达 → 当前项隐藏（递归隐藏：前置链上某项未解锁则整条链不显示）
       if (cfg.prereq) {
         const pre = PEG_MAP[cfg.prereq.id];
@@ -245,8 +243,6 @@ export class HUD {
 
   private renderAutoShop(list: HTMLElement) {
     for (const cfg of AUTO_DROPPERS) {
-      // 章节未解锁：完全隐藏
-      if (cfg.unlockChapter > GameState.chapterId) continue;
       // 直接前置本身的前置未达 → 当前项隐藏（递归隐藏）
       if (cfg.prereq) {
         const pre = AUTO_MAP[cfg.prereq.id];
@@ -307,9 +303,6 @@ export class HUD {
 
   private renderGlobalShop(list: HTMLElement) {
     for (const cfg of CRYSTAL_UPGRADES) {
-      // 章节未解锁：完全隐藏
-      if (cfg.unlockChapter > GameState.chapterId) continue;
-
       const lvl = GameState.getCrystalLevel(cfg.id);
       const cost = toBig(Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl)));
       const afford = GameState.crystal >= cost;
@@ -343,8 +336,6 @@ export class HUD {
     list.innerHTML = '';
     for (const cfg of SKILLS) {
       if (cfg.category === 'active') continue;
-      // 章节未解锁：完全隐藏
-      if (cfg.unlockChapter > GameState.chapterId) continue;
       // 直接前置本身的前置未达 → 当前项隐藏（递归隐藏）
       if (cfg.prereq) {
         const pre = SKILL_MAP[cfg.prereq.id];
