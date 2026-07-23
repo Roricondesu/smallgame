@@ -180,6 +180,23 @@
       opacity: 0.85;
     }
     .panel-title svg { width: 14px; height: 14px; color: var(--gold); }
+    .collapse-btn {
+      margin-left: auto;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: transform 0.2s, background 0.15s;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .collapse-btn:hover { background: var(--btn-hover); color: var(--text); }
+    .side-panel.collapsed { max-height: 42px; overflow: hidden; }
+    .side-panel.collapsed .collapse-btn { transform: rotate(-90deg); }
+    .side-panel.collapsed .panel-title { border-bottom: none; margin-bottom: 0; }
 
     /* 商店/技能卡片：简约扁平 */
     .shop-item, .skill-item {
@@ -519,7 +536,7 @@
     <button id="toggle-skill" class="panel-toggle"><span id="icon-skills"></span>技能</button>
 
     <div id="left-panel" class="side-panel">
-      <div class="panel-title"><span id="icon-pegs-dup"></span>钉子商店</div>
+      <div class="panel-title"><span id="icon-pegs-dup"></span>钉子商店<button class="collapse-btn" data-target="left-panel" aria-label="折叠">▾</button></div>
       <div class="tab-row">
         <button class="tab-btn active" data-tab="pegs">钉子</button>
         <button class="tab-btn" data-tab="autos">自动器</button>
@@ -529,7 +546,7 @@
     </div>
 
     <div id="right-panel" class="side-panel">
-      <div class="panel-title"><span id="icon-skills-dup"></span>升级与技能</div>
+      <div class="panel-title"><span id="icon-skills-dup"></span>升级与技能<button class="collapse-btn" data-target="right-panel" aria-label="折叠">▾</button></div>
       <div id="skill-list"></div>
     </div>
 

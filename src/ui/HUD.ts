@@ -81,6 +81,15 @@ export class HUD {
       rightPanel?.classList.toggle('open');
       leftPanel?.classList.remove('open');
     });
+    // 面板标题折叠按钮（所有屏幕尺寸）
+    document.querySelectorAll('.collapse-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetId = (btn as HTMLElement).dataset.target;
+        if (!targetId) return;
+        document.getElementById(targetId)?.classList.toggle('collapsed');
+      });
+    });
     // 点击空白处收起移动端面板
     document.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;

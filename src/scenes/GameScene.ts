@@ -27,6 +27,7 @@ interface PegSprite {
   text: Phaser.GameObjects.Text;
   gridX: number;
   gridY: number;
+  placeholder?: boolean;
 }
 
 const GAME_W = 960;
@@ -40,6 +41,7 @@ export class GameScene extends Phaser.Scene {
   private ballsGroup!: Phaser.Physics.Arcade.Group;
   private pegsGroup!: Phaser.Physics.Arcade.StaticGroup;
   private pegSprites: Map<string, PegSprite> = new Map();
+  private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
   private placementMode: { typeId: string | null } = { typeId: null };
   private dropZoneRect!: Phaser.GameObjects.Rectangle;
@@ -48,6 +50,28 @@ export class GameScene extends Phaser.Scene {
   private frenzyOverlay!: Phaser.GameObjects.Rectangle;
   private placementCursor: Phaser.GameObjects.Arc | null = null;
   private autoAccumulator = 0;
+
+  // 六边形蜂窝布局：奇数行向右偏移半个格子
+  private gridToPixel(gx: number, gy: number): { x: number; y: number } {
+    const offsetX = (gy % 2) * (BALANCE.cellSize / 2);
+    const x = GRID_X + gx * BALANCE.cellSize + BALANCE.cellSize / 2 + offsetX;
+    const y = GRID_Y + gy * BALANCE.cellSize + BALANCE.cellSize / 2;
+    return { x, y };
+  }
+
+  private pixelToGrid(x: number, y: number): { gx: number; gy: number } | null {
+    const gy = Math.floor((y - GRID_Y) / BALANCE.cellSize);
+    if (gy < 0 || gy >= BALANCE.gridRows) return null;
+    const offsetX = (gy % 2) * (BALANCE.cellSize / 2);
+    const gx = Math.floor((x - GRID_X - offsetX - BALANCE.cellSize / 2) / BALANCE.cellSize);
+    const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
+    if (gx < 0 || gx >= maxCol) return null;
+    return { gx, gy };
+  }
+
+  private placeholderKey(gx: number, gy: number): string {
+    return `${gx},${gy}`;
+  }
 
   constructor() {
     super('Game');
@@ -60,23 +84,24 @@ export class GameScene extends Phaser.Scene {
 
     this.drawBackground();
 
-    // 网格背景
+    // 六边形蜂窝网格背景：只画点阵不画方格
+    const gridBg = this.add.graphics();
+    gridBg.fillStyle(0xffffff, 0.04);
+    for (let gy = 0; gy < BALANCE.gridRows; gy++) {
+      const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
+      for (let gx = 0; gx < maxCol; gx++) {
+        const { x, y } = this.gridToPixel(gx, gy);
+        gridBg.fillCircle(x, y, 3);
+      }
+    }
+    // 网格边框
     this.add.rectangle(
       GRID_X + BALANCE.gridCols * BALANCE.cellSize / 2,
       GRID_Y + BALANCE.gridRows * BALANCE.cellSize / 2,
       BALANCE.gridCols * BALANCE.cellSize,
       BALANCE.gridRows * BALANCE.cellSize,
-      0x000000, 0.25,
-    ).setStrokeStyle(1, 0x30363d);
-
-    const g = this.add.graphics();
-    g.lineStyle(1, 0x30363d, 0.2);
-    for (let i = 0; i <= BALANCE.gridCols; i++) {
-      g.lineBetween(GRID_X + i * BALANCE.cellSize, GRID_Y, GRID_X + i * BALANCE.cellSize, GRID_Y + BALANCE.gridRows * BALANCE.cellSize);
-    }
-    for (let j = 0; j <= BALANCE.gridRows; j++) {
-      g.lineBetween(GRID_X, GRID_Y + j * BALANCE.cellSize, GRID_X + BALANCE.gridCols * BALANCE.cellSize, GRID_Y + j * BALANCE.cellSize);
-    }
+      0x000000, 0.2,
+    ).setStrokeStyle(1, 0x30363d).setDepth(-1);
 
     // 投放区
     this.dropZoneRect = this.add.rectangle(W / 2, DROP_ZONE_H / 2, W, DROP_ZONE_H, 0x161b22, 0.4)
@@ -119,10 +144,15 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.existing(this.add.rectangle(0, H / 2, 4, H, 0x30363d).setOrigin(0, 0.5), true);
     this.physics.add.existing(this.add.rectangle(W, H / 2, 4, H, 0x30363d).setOrigin(1, 0.5), true);
 
-    // 加载钉子
+    // 加载钉子（真实）
+    const occupied = new Set<string>();
     for (const peg of GameState.pegs) {
       this.renderPeg(peg);
+      occupied.add(this.placeholderKey(peg.x, peg.y));
     }
+
+    // 初始化占位钉子（显示 0，可被替换）
+    this.initPlaceholders(occupied);
 
     // 输入事件
     this.dropZoneRect.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
@@ -134,11 +164,11 @@ export class GameScene extends Phaser.Scene {
       if (pointer.y < DROP_ZONE_H) return;
       if (pointer.y > SETTLE_Y + 40) return;
       if (this.placementMode.typeId) {
-        const gx = Math.floor((pointer.x - GRID_X) / BALANCE.cellSize);
-        const gy = Math.floor((pointer.y - GRID_Y) / BALANCE.cellSize);
-        if (gx >= 0 && gx < BALANCE.gridCols && gy >= 0 && gy < BALANCE.gridRows) {
-          const peg = GameState.placePeg(this.placementMode.typeId, gx, gy);
+        const grid = this.pixelToGrid(pointer.x, pointer.y);
+        if (grid) {
+          const peg = GameState.placePeg(this.placementMode.typeId, grid.gx, grid.gy);
           if (peg) {
+            this.removePlaceholder(grid.gx, grid.gy);
             this.renderPeg(peg);
             this.updatePlacementCursor();
           }
@@ -286,6 +316,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
+    // 同步球上数字文字到球的位置
+    for (const ball of this.balls) {
+      ball.text.setPosition(ball.sprite.x, ball.sprite.y - 14);
+    }
     // 清理落底弹珠
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const ball = this.balls[i];
@@ -317,9 +351,13 @@ export class GameScene extends Phaser.Scene {
     const golden = GameState.isSkillActive('goldenRain');
     const texture = this.ballTextureFor(value, golden);
     const sprite = this.physics.add.image(x, y, texture);
-    // 弹珠：圆形碰撞体 + 世界边界反弹 + 钉子反弹
-    sprite.setCircle(7, 1, 1).setCollideWorldBounds(true).setBounce(0.8).setVelocityY(50);
+    // 先设显示尺寸，再设圆形碰撞体，确保弹珠与钉子正确碰撞反弹
     sprite.setDisplaySize(16, 16);
+    sprite.setCircle(7, 1, 1);
+    sprite.setCollideWorldBounds(true);
+    sprite.setBounce(0.92); // 高弹性
+    sprite.setVelocityY(50);
+
     if (GameState.isSkillActive('slowdown')) {
       sprite.setVelocity(sprite.body!.velocity.x * 0.5, sprite.body!.velocity.y * 0.5);
     }
@@ -327,7 +365,7 @@ export class GameScene extends Phaser.Scene {
     const text = this.add.text(x, y - 14, formatNum(value), {
       fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '11px',
       color: golden ? '#ffd700' : '#ffffff', stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(5);
 
     const ball: Ball = { sprite, text, value, source, golden, sageCopy: 0 };
     this.balls.push(ball);
@@ -347,6 +385,14 @@ export class GameScene extends Phaser.Scene {
   private onBallPeg(ball: Ball, ps: PegSprite) {
     if (ball.lastPegId === ps.pegId) return;
     ball.lastPegId = ps.pegId;
+
+    // 占位钉子：显示 +0，不改变数值（纯碰撞反弹）
+    if (ps.placeholder || ps.typeId === 'placeholder') {
+      this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, '+0', 0x7d8896);
+      this.tweens.add({ targets: ps.sprite, scaleX: 1.2, scaleY: 1.2, duration: 80, yoyo: true });
+      return;
+    }
+
     const peg = GameState.pegs.find((p) => p.id === ps.pegId);
     if (!peg) return;
     const t = PEG_MAP[peg.typeId];
@@ -426,8 +472,7 @@ export class GameScene extends Phaser.Scene {
   private renderPeg(peg: PegSave) {
     const cfg = PEG_MAP[peg.typeId];
     if (!cfg) return;
-    const x = GRID_X + peg.x * BALANCE.cellSize + BALANCE.cellSize / 2;
-    const y = GRID_Y + peg.y * BALANCE.cellSize + BALANCE.cellSize / 2;
+    const { x, y } = this.gridToPixel(peg.x, peg.y);
 
     let texKey = 'peg_plus';
     if (cfg.operator === '*') texKey = 'peg_mul';
@@ -437,12 +482,12 @@ export class GameScene extends Phaser.Scene {
     else if (cfg.operator === 'addPercent') texKey = 'peg_chart';
     else if (cfg.operator === 'maxMul') texKey = 'peg_double';
 
-    // 使用 staticGroup 创建静态钉子，物理引擎自动处理碰撞反弹
+    // 使用 staticGroup 创建静态钉子；直接操作 StaticBody 设置圆形碰撞体
     const sprite = this.pegsGroup.create(x, y, texKey) as Phaser.Physics.Arcade.Image;
-    sprite.setCircle(9, 2, 2);
-    sprite.setDisplaySize(18, 18);
-    // 刷新静态体缓冲（StaticGroup 专用，类型定义不全，需 cast 调用）
-    (sprite as unknown as { setRefreshBuffer?: () => void }).setRefreshBuffer?.();
+    const body = sprite.body as Phaser.Physics.Arcade.StaticBody;
+    body.setCircle(10, 0, 0);
+    // 同步 body 位置到游戏对象位置（静态体关键）
+    body.updateFromGameObject();
 
     const label = this.pegLabel(cfg, peg);
     const text = this.add.text(x, y, label, {
@@ -467,6 +512,46 @@ export class GameScene extends Phaser.Scene {
     sprite.on('pointerout', () => sprite.setAlpha(1));
   }
 
+  // ===== 占位钉子（显示 0，可被替换） =====
+  private initPlaceholders(occupied: Set<string>) {
+    for (let gy = 0; gy < BALANCE.gridRows; gy++) {
+      const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
+      for (let gx = 0; gx < maxCol; gx++) {
+        const key = this.placeholderKey(gx, gy);
+        if (occupied.has(key)) continue;
+        this.renderPlaceholder(gx, gy);
+      }
+    }
+  }
+
+  private renderPlaceholder(gx: number, gy: number) {
+    const { x, y } = this.gridToPixel(gx, gy);
+    const sprite = this.pegsGroup.create(x, y, 'peg_placeholder') as Phaser.Physics.Arcade.Image;
+    const body = sprite.body as Phaser.Physics.Arcade.StaticBody;
+    body.setCircle(10, 0, 0);
+    body.updateFromGameObject();
+    sprite.setAlpha(0.45);
+
+    const text = this.add.text(x, y, '0', {
+      fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '10px',
+      color: '#7d8896', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setAlpha(0.6);
+
+    const ps: PegSprite = {
+      sprite, pegId: `ph_${gx}_${gy}`, typeId: 'placeholder',
+      text, gridX: gx, gridY: gy, placeholder: true,
+    };
+    this.placeholderPegs.set(this.placeholderKey(gx, gy), ps);
+  }
+
+  private removePlaceholder(gx: number, gy: number) {
+    const ps = this.placeholderPegs.get(this.placeholderKey(gx, gy));
+    if (!ps) return;
+    this.pegsGroup.remove(ps.sprite, true, true);
+    ps.text.destroy();
+    this.placeholderPegs.delete(this.placeholderKey(gx, gy));
+  }
+
   private pegLabel(cfg: typeof PEG_MAP[string], peg: PegSave): string {
     if (cfg.operator === '+') return `+${Math.floor(cfg.operand + (peg.level - 1) * cfg.growth)}`;
     if (cfg.operator === '*') return `×${(cfg.operand + (peg.level - 1) * cfg.growth).toFixed(1)}`;
@@ -480,9 +565,14 @@ export class GameScene extends Phaser.Scene {
   private removePegSprite(pegId: string) {
     const ps = this.pegSprites.get(pegId);
     if (!ps) return;
+    const gx = ps.gridX, gy = ps.gridY;
     this.pegsGroup.remove(ps.sprite, true, true);
     ps.text.destroy();
     this.pegSprites.delete(pegId);
+    // 卖出后恢复该位置的占位钉子
+    if (!this.placeholderPegs.has(this.placeholderKey(gx, gy))) {
+      this.renderPlaceholder(gx, gy);
+    }
   }
 
   private updatePegLabel(ps: PegSprite, peg: PegSave) {

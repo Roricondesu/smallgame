@@ -53,6 +53,7 @@ export class BootScene extends Phaser.Scene {
     make('peg_sage', 0xffffff);
     make('peg_chart', 0x79c0ff);
     make('peg_double', 0xffa198);
+    make('peg_placeholder', 0x2a323d); // 占位钉子：暗灰色
   }
 
   private makeParticleTexture() {
