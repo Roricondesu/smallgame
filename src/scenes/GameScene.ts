@@ -39,7 +39,7 @@ const SETTLE_Y = GRID_Y + BALANCE.gridRows * BALANCE.cellSize + 10;
 export class GameScene extends Phaser.Scene {
   private balls: Ball[] = [];
   private ballsGroup!: Phaser.Physics.Arcade.Group;
-  private pegsGroup!: Phaser.Physics.Arcade.StaticGroup;
+  private pegsGroup!: Phaser.Physics.Arcade.Group;
   private pegSprites: Map<string, PegSprite> = new Map();
   private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
@@ -129,11 +129,11 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBoundsCollision(true, true, true, false);
     this.physics.world.gravity.y = BALANCE.gravityBase * (1 + (GameState.getSkillLevel('gravity') || 0) * 0.1);
 
-    // 使用动态组存放弹珠，静态组存放钉子
+    // 弹珠和钉子都用动态组：钉子设置 immovable + moves=false
+    // 这样 collider 会正确计算碰撞反弹（DynamicBody.setCircle offset 语义一致）
     this.ballsGroup = this.physics.add.group();
-    this.pegsGroup = this.physics.add.staticGroup();
+    this.pegsGroup = this.physics.add.group();
 
-    // collider 会自动处理碰撞反弹：弹珠（动态）碰钉子（静态）会弹开
     this.physics.add.collider(this.ballsGroup, this.pegsGroup, (ballObj, pegObj) => {
       const ball = this.balls.find((b) => b.sprite === ballObj);
       const ps = [...this.pegSprites.values()].find((p) => p.sprite === pegObj);
@@ -469,6 +469,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ===== 钉子 =====
+  private makePegSprite(x: number, y: number, texKey: string): Phaser.Physics.Arcade.Image {
+    // 用动态 body 创建钉子：immovable 让钉子不被推动，moves=false 让钉子不受重力影响
+    const sprite = this.physics.add.image(x, y, texKey);
+    sprite.setDisplaySize(18, 18);
+    sprite.setCircle(9, 0, 0);
+    sprite.setImmovable(true);
+    sprite.body!.moves = false;
+    this.pegsGroup.add(sprite);
+    return sprite;
+  }
+
   private renderPeg(peg: PegSave) {
     const cfg = PEG_MAP[peg.typeId];
     if (!cfg) return;
@@ -482,12 +493,7 @@ export class GameScene extends Phaser.Scene {
     else if (cfg.operator === 'addPercent') texKey = 'peg_chart';
     else if (cfg.operator === 'maxMul') texKey = 'peg_double';
 
-    // 使用 staticGroup 创建静态钉子；直接操作 StaticBody 设置圆形碰撞体
-    const sprite = this.pegsGroup.create(x, y, texKey) as Phaser.Physics.Arcade.Image;
-    const body = sprite.body as Phaser.Physics.Arcade.StaticBody;
-    body.setCircle(10, 0, 0);
-    // 同步 body 位置到游戏对象位置（静态体关键）
-    body.updateFromGameObject();
+    const sprite = this.makePegSprite(x, y, texKey);
 
     const label = this.pegLabel(cfg, peg);
     const text = this.add.text(x, y, label, {
@@ -526,10 +532,7 @@ export class GameScene extends Phaser.Scene {
 
   private renderPlaceholder(gx: number, gy: number) {
     const { x, y } = this.gridToPixel(gx, gy);
-    const sprite = this.pegsGroup.create(x, y, 'peg_placeholder') as Phaser.Physics.Arcade.Image;
-    const body = sprite.body as Phaser.Physics.Arcade.StaticBody;
-    body.setCircle(10, 0, 0);
-    body.updateFromGameObject();
+    const sprite = this.makePegSprite(x, y, 'peg_placeholder');
     sprite.setAlpha(0.45);
 
     const text = this.add.text(x, y, '0', {
@@ -548,6 +551,7 @@ export class GameScene extends Phaser.Scene {
     const ps = this.placeholderPegs.get(this.placeholderKey(gx, gy));
     if (!ps) return;
     this.pegsGroup.remove(ps.sprite, true, true);
+    ps.sprite.destroy();
     ps.text.destroy();
     this.placeholderPegs.delete(this.placeholderKey(gx, gy));
   }
@@ -567,6 +571,7 @@ export class GameScene extends Phaser.Scene {
     if (!ps) return;
     const gx = ps.gridX, gy = ps.gridY;
     this.pegsGroup.remove(ps.sprite, true, true);
+    ps.sprite.destroy();
     ps.text.destroy();
     this.pegSprites.delete(pegId);
     // 卖出后恢复该位置的占位钉子
