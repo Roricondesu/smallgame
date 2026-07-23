@@ -1,14 +1,25 @@
 // 存档系统：LocalStorage 读写、版本迁移、离线收益计算
 // 大数值字段使用 BigInt（内部 ×100 缩放，两位小数精度）。
 // 序列化时 bigint 包装为 { __bigint__: "..." }，加载时还原。
+// 支持 3 个独立存档槽位：key 形如 pinball_alchemy_save_v1_slot${slot}。
 
 import type { SaveData, AutoDropperSave } from '../types';
 import { BALANCE } from '../types';
 import { AUTO_MAP } from '../data/chapters';
+import { CHAPTERS, CHAPTER_MAP } from '../data/chapters';
 import { toBig, fromBig } from './BigNum';
 
-const SAVE_KEY = 'pinball_alchemy_save_v1';
-const VERSION = '1.3.0';
+const SAVE_KEY_PREFIX = 'pinball_alchemy_save_v1_slot';
+const LEGACY_SAVE_KEY = 'pinball_alchemy_save_v1'; // 旧版单槽位存档，迁移到 slot 0
+const ACTIVE_SLOT_KEY = 'pinball_alchemy_active_slot';
+
+export const SLOT_COUNT = 3;
+
+function slotKey(slot: number): string {
+  return `${SAVE_KEY_PREFIX}${slot}`;
+}
+
+const VERSION = '1.4.0';
 
 export const DEFAULT_SAVE: SaveData = {
   version: VERSION,
@@ -31,44 +42,123 @@ export const DEFAULT_SAVE: SaveData = {
   },
 };
 
+/** 槽位元信息（用于主菜单展示，无需加载完整存档） */
+export interface SlotMeta {
+  slot: number;
+  exists: boolean;
+  chapterId: number;
+  chapterName: string;
+  gold: bigint;
+  crystal: bigint;
+  lastSeen: number;
+  totalBalls: number;
+}
+
 export class SaveSystem {
-  static load(): SaveData {
+  // 当前活动槽位（-1 表示未选择，仅在 GameState 初始化前的过渡态）
+  static currentSlot: number = 0;
+
+  /** 读取 localStorage 中的活动槽位（用于启动时恢复） */
+  static readActiveSlot(): number {
+    const raw = localStorage.getItem(ACTIVE_SLOT_KEY);
+    const n = raw ? parseInt(raw, 10) : 0;
+    return Number.isFinite(n) && n >= 0 && n < SLOT_COUNT ? n : 0;
+  }
+
+  static setActiveSlot(slot: number) {
+    this.currentSlot = slot;
+    try { localStorage.setItem(ACTIVE_SLOT_KEY, String(slot)); } catch { /* 忽略 */ }
+  }
+
+  static slotExists(slot: number): boolean {
+    return localStorage.getItem(slotKey(slot)) !== null;
+  }
+
+  static loadSlot(slot: number): SaveData {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return SaveSystem.migrate({});
-      const parsed = JSON.parse(raw, (_k, v) => {
-        // 还原 bigint：保存时包装为 { __bigint__: "..." }
-        if (v && typeof v === 'object' && '__bigint__' in v) {
-          return BigInt((v as { __bigint__: string }).__bigint__);
+      const raw = localStorage.getItem(slotKey(slot));
+      if (!raw) {
+        // 首次：尝试把旧版单槽位存档迁移到 slot 0
+        if (slot === 0) {
+          const legacy = localStorage.getItem(LEGACY_SAVE_KEY);
+          if (legacy) {
+            const parsed = JSON.parse(legacy, reviver);
+            return SaveSystem.migrate(parsed);
+          }
         }
-        return v;
-      });
+        return SaveSystem.migrate({});
+      }
+      const parsed = JSON.parse(raw, reviver);
       return SaveSystem.migrate(parsed);
     } catch (e) {
-      console.error('存档读取失败', e);
+      console.error(`存档读取失败 slot=${slot}`, e);
       return SaveSystem.migrate({});
     }
   }
 
-  static save(data: SaveData) {
+  static saveSlot(slot: number, data: SaveData): boolean {
     try {
       data.lastSeen = Date.now();
-      // bigint 字段包装为 { __bigint__: "..." }，普通字段原样
-      const json = JSON.stringify(data, (_k, v) => {
-        if (typeof v === 'bigint') return { __bigint__: v.toString() };
-        return v;
-      });
-      localStorage.setItem(SAVE_KEY, json);
+      const json = JSON.stringify(data, replacer);
+      localStorage.setItem(slotKey(slot), json);
       return true;
     } catch (e) {
-      console.error('存档写入失败', e);
+      console.error(`存档写入失败 slot=${slot}`, e);
       return false;
     }
   }
 
-  static wipe() {
-    localStorage.removeItem(SAVE_KEY);
+  static wipeSlot(slot: number) {
+    localStorage.removeItem(slotKey(slot));
   }
+
+  /** 读取槽位元信息（轻量，不解析完整存档） */
+  static getSlotMeta(slot: number): SlotMeta {
+    const base: SlotMeta = {
+      slot, exists: false,
+      chapterId: 1, chapterName: CHAPTERS[0].name,
+      gold: 0n, crystal: 0n, lastSeen: 0, totalBalls: 0,
+    };
+    try {
+      const raw = localStorage.getItem(slotKey(slot));
+      if (!raw) {
+        // 兼容旧版单槽位存档 → slot 0
+        if (slot === 0) {
+          const legacy = localStorage.getItem(LEGACY_SAVE_KEY);
+          if (legacy) {
+            const parsed = JSON.parse(legacy, reviver) as SaveData;
+            return {
+              slot, exists: true,
+              chapterId: parsed.chapterId ?? 1,
+              chapterName: CHAPTER_MAP[parsed.chapterId ?? 1]?.name ?? CHAPTERS[0].name,
+              gold: parsed.gold ?? 0n,
+              crystal: parsed.crystal ?? 0n,
+              lastSeen: parsed.lastSeen ?? 0,
+              totalBalls: parsed.stats?.totalBalls ?? 0,
+            };
+          }
+        }
+        return base;
+      }
+      const parsed = JSON.parse(raw, reviver) as SaveData;
+      return {
+        slot, exists: true,
+        chapterId: parsed.chapterId ?? 1,
+        chapterName: CHAPTER_MAP[parsed.chapterId ?? 1]?.name ?? CHAPTERS[0].name,
+        gold: parsed.gold ?? 0n,
+        crystal: parsed.crystal ?? 0n,
+        lastSeen: parsed.lastSeen ?? 0,
+        totalBalls: parsed.stats?.totalBalls ?? 0,
+      };
+    } catch {
+      return base;
+    }
+  }
+
+  // ===== 旧 API（基于 currentSlot）兼容 =====
+  static load(): SaveData { return SaveSystem.loadSlot(SaveSystem.currentSlot); }
+  static save(data: SaveData): boolean { return SaveSystem.saveSlot(SaveSystem.currentSlot, data); }
+  static wipe(): void { SaveSystem.wipeSlot(SaveSystem.currentSlot); }
 
   static migrate(data: Partial<SaveData> & Record<string, unknown>): SaveData {
     const merged: SaveData = {
@@ -93,7 +183,6 @@ export class SaveSystem {
     if (!merged.crystalUpgrades) merged.crystalUpgrades = {};
 
     // 迁移旧版 number → bigint（×100 缩放）
-    // 旧存档的数值字段是 number，新存档已经是 bigint（通过 reviver 还原）
     const numToBig = (v: unknown): bigint => {
       if (typeof v === 'bigint') return v;
       if (typeof v === 'number') return toBig(v);
@@ -131,10 +220,21 @@ export class SaveSystem {
     if (rate <= 0) return { gold: 0n, seconds: diff };
 
     const offlineRateMul = 1 + (data.skillLevels?.offlineRate || 0) * 0.1;
-    // ballInitialValue 是缩放 bigint，原值 = biv / SCALE
-    // 原版 avgValue = ballInitialValue原值 × 100，恰好等于 biv（缩放值）作为 number 估算
     const avgValueOrig = Math.max(1, fromBig(data.ballInitialValue) * 100);
     const goldOrig = diff * rate * avgValueOrig * 0.5 * offlineRateMul;
     return { gold: toBig(Math.floor(goldOrig)), seconds: diff };
   }
+}
+
+// ===== JSON reviver / replacer =====
+function reviver(_k: string, v: unknown): unknown {
+  if (v && typeof v === 'object' && '__bigint__' in v) {
+    return BigInt((v as { __bigint__: string }).__bigint__);
+  }
+  return v;
+}
+
+function replacer(_k: string, v: unknown): unknown {
+  if (typeof v === 'bigint') return { __bigint__: v.toString() };
+  return v;
 }

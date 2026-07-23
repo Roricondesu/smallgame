@@ -400,6 +400,38 @@
     .modal p { color: var(--text); font-size: 13px; line-height: 1.6; margin-bottom: 10px; }
     .modal .muted { color: var(--muted); font-size: 12px; line-height: 1.6; }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+
+    /* 存档槽位卡片 */
+    .slot-card {
+      background: var(--btn);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: all 0.15s;
+    }
+    .slot-card:hover { background: var(--btn-hover); border-color: var(--border-strong); }
+    .slot-card.empty { border-style: dashed; opacity: 0.7; }
+    .slot-card-head {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .slot-card-no {
+      font-size: 12px; color: var(--muted); font-weight: 500;
+      background: rgba(255,255,255,0.06);
+      padding: 2px 8px; border-radius: 4px;
+    }
+    .slot-card-title {
+      flex: 1; color: var(--text); font-size: 13px; font-weight: 500;
+    }
+    .slot-card-meta {
+      color: var(--muted); font-size: 11px; line-height: 1.5; margin-bottom: 8px;
+    }
+    .slot-card-meta .kv { display: inline-flex; gap: 4px; margin-right: 12px; }
+    .slot-card-meta .kv b { color: var(--text); font-weight: 500; }
+    .slot-card-actions { display: flex; gap: 6px; }
+    .slot-card-actions .btn { flex: 1; justify-content: center; padding: 7px 10px; font-size: 12px; }
+    .slot-card-actions .btn.danger { flex: 0 0 auto; }
+
     .btn {
       background: var(--btn); color: var(--text);
       border: 1px solid var(--border); border-radius: var(--radius-sm);

@@ -56,12 +56,14 @@ class ActiveState {
 }
 
 class GameStateClass {
-  private _save: SaveData = SaveSystem.load();
+  private _slot: number = SaveSystem.readActiveSlot();
+  private _save: SaveData = SaveSystem.loadSlot(SaveSystem.readActiveSlot());
   private actives = new ActiveState();
   private combo = 0;
   private comboTimer = 0;
 
   get save() { return this._save; }
+  get slot() { return this._slot; }
   get chapterId() { return this._save.chapterId; }
   get chapter() { return CHAPTER_MAP[this._save.chapterId] ?? CHAPTERS[0]; }
   get gold() { return this._save.gold; }
@@ -73,8 +75,20 @@ class GameStateClass {
 
   init() {}
 
+  /** 切换到指定槽位并加载存档（主菜单选槽位时调用） */
+  loadSlot(slot: number) {
+    this._slot = slot;
+    SaveSystem.setActiveSlot(slot);
+    this._save = SaveSystem.loadSlot(slot);
+  }
+
+  /** 当前槽位是否已有存档（用于主菜单"新游戏"判断） */
+  slotExists(slot: number = this._slot): boolean {
+    return SaveSystem.slotExists(slot);
+  }
+
   saveGame() {
-    SaveSystem.save(this._save);
+    SaveSystem.saveSlot(this._slot, this._save);
     bus.emit(EVT.SAVE_DONE);
   }
 

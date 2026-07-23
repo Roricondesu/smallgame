@@ -107,8 +107,6 @@ export class GameScene extends Phaser.Scene {
     const ch = GameState.chapter;
     this.cameras.main.setBackgroundColor(ch.bg);
 
-    this.drawBackground();
-
     // 六边形蜂窝网格背景：点阵
     const gridBg = this.add.graphics();
     gridBg.fillStyle(0xffffff, 0.04);
@@ -360,68 +358,6 @@ export class GameScene extends Phaser.Scene {
     if (bonus <= 0n) return;
     GameState.addGold(bonus);
     this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, `+${formatNum(bonus)}`, 0x56d4dd);
-  }
-
-  // 程序化绘制每章背景
-  private drawBackground() {
-    const W = this.scale.width, H = this.scale.height;
-    const ch = GameState.chapter;
-    const bg = this.add.graphics();
-
-    if (ch.id === 1) {
-      for (let i = 0; i < 80; i++) {
-        bg.fillStyle(0xffffff, Math.random() * 0.6 + 0.2);
-        bg.fillRect(Math.random() * W, Math.random() * (H - 200), 2, 2);
-      }
-      bg.fillStyle(0x2a1a0a, 1);
-      bg.fillRect(0, H - 100, W, 100);
-      for (let i = 0; i < 8; i++) {
-        const x = i * (W / 8) + 20;
-        bg.fillStyle(0x1a0a05, 1);
-        bg.fillTriangle(x, H - 40, x + 30, H - 80, x + 60, H - 40);
-        bg.fillStyle(0xf0b429, 0.4);
-        bg.fillRect(x + 8, H - 50, 4, 4);
-        bg.fillRect(x + 30, H - 50, 4, 4);
-      }
-    } else if (ch.id === 2) {
-      for (let i = 0; i < 100; i++) {
-        bg.fillStyle(0x5ad1ff, Math.random() * 0.3 + 0.05);
-        bg.fillRect(Math.random() * W, Math.random() * H, 2, 2);
-      }
-      for (let i = 0; i < 5; i++) {
-        const x = (i + 1) * (W / 6);
-        bg.fillStyle(0x5ad1ff, 0.08);
-        bg.fillRect(x - 30, 0, 60, H);
-      }
-      bg.fillStyle(0x0a1a15, 1);
-      bg.fillRect(0, H - 60, W, 60);
-    } else if (ch.id === 3) {
-      for (let i = 0; i < 50; i++) {
-        bg.fillStyle(0xffcc33, Math.random() * 0.4);
-        bg.fillRect(Math.random() * W, Math.random() * H, 3, 3);
-      }
-      bg.fillStyle(0x2a1a0a, 1);
-      bg.fillRect(0, H - 80, W, 80);
-      bg.fillStyle(0xffcc33, 0.1);
-      bg.fillRect(0, H - 80, W, 80);
-    } else if (ch.id === 4) {
-      for (let i = 0; i < 5; i++) {
-        const x = (i + 1) * (W / 6);
-        bg.fillStyle(0xccccff, 0.06);
-        bg.fillRect(x - 40, 0, 80, H);
-      }
-      for (let i = 0; i < 100; i++) {
-        bg.fillStyle(0xffffff, Math.random() * 0.5 + 0.1);
-        bg.fillRect(Math.random() * W, Math.random() * H, 1, 1);
-      }
-    } else {
-      for (let i = 0; i < 250; i++) {
-        const c = Math.random() > 0.5 ? 0xaa88ff : 0xffffff;
-        bg.fillStyle(c, Math.random() * 0.7 + 0.1);
-        bg.fillRect(Math.random() * W, Math.random() * H, 1, 1);
-      }
-    }
-    bg.setDepth(-1);
   }
 
   update() {

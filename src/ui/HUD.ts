@@ -1,6 +1,7 @@
 // DOM 层 HUD：现代深色像素 UI，SVG 图标，事件驱动更新
 
 import { GameState, formatNum, toBig, fromBig } from '../systems/GameState';
+import { SaveSystem } from '../systems/SaveSystem';
 import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
 import { SKILLS, SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
@@ -137,8 +138,8 @@ export class HUD {
       document.getElementById('modal-menu')!.classList.remove('open');
     });
     document.getElementById('menu-wipe')!.addEventListener('click', () => {
-      if (confirm('确定要清空所有存档吗？此操作不可恢复。')) {
-        localStorage.removeItem('pinball_alchemy_save_v1');
+      if (confirm(`确定要清空当前存档（槽位 ${GameState.slot + 1}）吗？此操作不可恢复。`)) {
+        SaveSystem.wipeSlot(GameState.slot);
         location.reload();
       }
     });
@@ -198,12 +199,6 @@ export class HUD {
     for (const cfg of PEG_TYPES) {
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      // 直接前置本身的前置未达 → 当前项隐藏
-      // （即只显示"直接前置已可解锁"的下一项）
-      if (cfg.prereq) {
-        const pre = PEG_MAP[cfg.prereq.id];
-        if (pre && !GameState.isPegPrereqMet(pre)) continue;
-      }
 
       const prereqMet = GameState.isPegPrereqMet(cfg);
       const count = GameState.pegs.filter((p) => p.typeId === cfg.id).length;
@@ -247,11 +242,6 @@ export class HUD {
     for (const cfg of AUTO_DROPPERS) {
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      // 直接前置本身的前置未达 → 当前项隐藏
-      if (cfg.prereq) {
-        const pre = AUTO_MAP[cfg.prereq.id];
-        if (pre && !GameState.isAutoPrereqMet(pre)) continue;
-      }
 
       const prereqMet = GameState.isAutoPrereqMet(cfg);
       const info = GameState.getAutoDropperInfo(cfg.id);
@@ -345,11 +335,6 @@ export class HUD {
       if (cfg.category === 'active') continue;
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      // 直接前置本身的前置未达 → 当前项隐藏
-      if (cfg.prereq) {
-        const pre = SKILL_MAP[cfg.prereq.id];
-        if (pre && !GameState.isSkillPrereqMet(pre)) continue;
-      }
 
       const prereqMet = GameState.isSkillPrereqMet(cfg);
       const lvl = GameState.getSkillLevel(cfg.id);
