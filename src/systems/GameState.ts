@@ -23,21 +23,47 @@ export function safeMul(a: number, b: number): number {
 }
 
 export function formatNum(n: number): string {
-  if (n >= 1e15) return n.toExponential(2).replace('+', '');
-  if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-  if (Number.isInteger(n)) return String(n);
-  return n.toFixed(1);
+  if (!isFinite(n) || n >= 1e308) return '∞';
+  if (n < 1) return '0';
+  if (n < 1000) {
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(1);
+  }
+  // 字母表示：1e3=A, 1e6=B, ..., 1e78=Z, 1e81=AA, 1e84=AB...
+  let k = Math.floor(Math.log10(n) / 3);
+  if (k < 1) k = 1;
+  if (k > 100) k = 100;
+  let val = n / Math.pow(1000, k);
+  while (val < 1 && k > 1) { val *= 1000; k--; }
+  while (val >= 1000 && k < 100) { val /= 1000; k++; }
+  return val.toFixed(2) + suffix(k);
 }
 
 export function shortNum(n: number): string {
-  if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-  return String(Math.floor(n));
+  if (!isFinite(n) || n >= 1e308) return '∞';
+  if (n < 1000) return String(Math.floor(n));
+  let k = Math.floor(Math.log10(n) / 3);
+  if (k < 1) k = 1;
+  if (k > 100) k = 100;
+  let val = n / Math.pow(1000, k);
+  while (val < 1 && k > 1) { val *= 1000; k--; }
+  while (val >= 1000 && k < 100) { val /= 1000; k++; }
+  return val.toFixed(1) + suffix(k);
+}
+
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+// k 是 1000 的幂次：1=A, 2=B, ..., 26=Z, 27=AA, 28=AB...
+function suffix(k: number): string {
+  if (k <= 0) return '';
+  let s = '';
+  let n = k;
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = LETTERS[rem] + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
 }
 
 class ActiveState {
@@ -206,20 +232,9 @@ class GameStateClass {
       case '/':
         v = Math.max(1, Math.floor(v / cfg.operand));
         break;
-      case '^': {
-        // 平方运算软上限：避免大数时指数爆炸到 Infinity 导致卡顿
-        // 当 v < 1e6 时正常平方；之后用对数缩放，效果衰减
-        if (v < 1e6) {
-          v = safeMul(v, v);
-        } else {
-          // log 域运算：v' = exp(2 * log(v) - penalty)
-          // 当 v 很大时，平方效果近似 +1e6 线性增量而非指数
-          const logV = Math.log(v);
-          const newLog = logV * 2 - Math.max(0, (logV - 14) * 0.5);
-          v = Math.min(MAX_NUMBER, Math.exp(Math.min(700, newLog)));
-        }
+      case '^':
+        v = safeMul(v, v);
         break;
-      }
       case '%':
         break;
       case 'addPercent':
