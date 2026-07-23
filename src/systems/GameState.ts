@@ -144,9 +144,31 @@ class GameStateClass {
   }
 
   // ===== 钉子 =====
+  /** 该类型钉子的有效等级上限：基础 + sageBlueprint 奖励 + 前置解锁奖励 */
+  getPegMaxLevel(cfg: import('../types').PegConfig): number {
+    let max = cfg.maxLevel + this.getSkillLevel('sageBlueprint') * 2;
+    if (cfg.prereq) {
+      const cnt = this._save.pegs.filter((p) => p.typeId === cfg.prereq!.id).length;
+      if (cnt >= cfg.prereq.level) max += cfg.prereqBonusLevels ?? 5;
+    }
+    return max;
+  }
+
+  /** 前置是否满足：钉子看放置数量 */
+  isPegPrereqMet(cfg: import('../types').PegConfig): boolean {
+    if (!cfg.prereq) return true;
+    const cnt = this._save.pegs.filter((p) => p.typeId === cfg.prereq!.id).length;
+    return cnt >= cfg.prereq.level;
+  }
+
   placePeg(typeId: string, gx: number, gy: number): PegSave | null {
     const cfg = PEG_MAP[typeId];
     if (!cfg || cfg.unlockChapter > this._save.chapterId) return null;
+    if (!this.isPegPrereqMet(cfg)) {
+      const pre = PEG_MAP[cfg.prereq!.id];
+      bus.emit(EVT.TOAST, `需要先放置 ${cfg.prereq!.level} 个${pre?.name ?? cfg.prereq!.id}`);
+      return null;
+    }
 
     const existing = this._save.pegs.find((p) => p.x === gx && p.y === gy);
     if (existing) return null;
@@ -180,7 +202,7 @@ class GameStateClass {
     const cfg = PEG_MAP[peg.typeId];
     if (!cfg) return false;
 
-    const maxLevel = cfg.maxLevel + this.getSkillLevel('sageBlueprint') * 2;
+    const maxLevel = this.getPegMaxLevel(cfg);
     if (peg.level >= maxLevel) {
       bus.emit(EVT.TOAST, '钉子等级已达上限');
       return false;
@@ -232,9 +254,14 @@ class GameStateClass {
       case '/':
         v = Math.max(1, Math.floor(v / cfg.operand));
         break;
-      case '^':
-        v = safeMul(v, v);
+      case '^': {
+        // 指数钉：v = v^exponent，exponent = operand + (level-1) * growth
+        // 例如 1.1 + (level-1) * 0.1。用 Math.pow 而非 v*v，避免大数平方爆炸到 Infinity
+        const exponent = cfg.operand + (peg.level - 1) * cfg.growth;
+        const r = Math.pow(v, exponent);
+        v = safeMul(r, 1); // 通过 safeMul clamp 到 MAX_NUMBER，防 Infinity
         break;
+      }
       case '%':
         break;
       case 'addPercent':
@@ -260,10 +287,26 @@ class GameStateClass {
     return this._save.skillLevels[id] || 0;
   }
 
+  /** 前置是否满足：技能看前置技能等级 */
+  isSkillPrereqMet(cfg: import('../types').SkillConfig): boolean {
+    if (!cfg.prereq) return true;
+    return this.getSkillLevel(cfg.prereq.id) >= cfg.prereq.level;
+  }
+
+  /** 该技能的有效等级上限：基础 + 前置解锁奖励 */
+  getSkillMaxLevel(cfg: import('../types').SkillConfig): number {
+    let max = cfg.maxLevel;
+    if (cfg.prereq && this.getSkillLevel(cfg.prereq.id) >= cfg.prereq.level) {
+      max += cfg.prereqBonusLevels ?? 5;
+    }
+    return max;
+  }
+
   isSkillUnlocked(id: string): boolean {
     const cfg = SKILL_MAP[id];
     if (!cfg) return false;
-    return cfg.unlockChapter <= this._save.chapterId;
+    if (cfg.unlockChapter > this._save.chapterId) return false;
+    return this.isSkillPrereqMet(cfg);
   }
 
   buySkill(id: string): boolean {
@@ -273,8 +316,14 @@ class GameStateClass {
       bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
       return false;
     }
+    if (!this.isSkillPrereqMet(cfg)) {
+      const pre = SKILL_MAP[cfg.prereq!.id];
+      bus.emit(EVT.TOAST, `需要先升满 ${cfg.prereq!.level} 级${pre?.name ?? cfg.prereq!.id}`);
+      return false;
+    }
     const lvl = this.getSkillLevel(id);
-    if (lvl >= cfg.maxLevel) {
+    const maxLevel = this.getSkillMaxLevel(cfg);
+    if (lvl >= maxLevel) {
       bus.emit(EVT.TOAST, '技能已满级');
       return false;
     }

@@ -523,10 +523,9 @@ export class GameScene extends Phaser.Scene {
     if (ball.lastPegId === ps.pegId) return;
     ball.lastPegId = ps.pegId;
 
-    // 占位钉子：显示 +0，不改变数值（纯碰撞反弹）
+    // 占位钉子：显示 +0，不改变数值（纯碰撞反弹，无视觉动画）
     if (ps.placeholder || ps.typeId === 'placeholder') {
       this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, '+0', 0x7d8896);
-      this.tweens.add({ targets: ps.sprite, scaleX: 1.2, scaleY: 1.2, duration: 80, yoyo: true });
       return;
     }
 
@@ -550,7 +549,8 @@ export class GameScene extends Phaser.Scene {
 
     const opLabel = t.operator === '+' ? `+${Math.floor(t.operand + (peg.level - 1) * t.growth)}`
       : t.operator === '*' ? `×${(t.operand + (peg.level - 1) * t.growth).toFixed(1)}`
-      : t.operator === '/' ? `÷${t.operand}` : t.operator === '^' ? '^2'
+      : t.operator === '/' ? `÷${t.operand}`
+      : t.operator === '^' ? `^${(t.operand + (peg.level - 1) * t.growth).toFixed(1)}`
       : t.operator === 'addPercent' ? `+${Math.floor((t.operand + (peg.level - 1) * t.growth) * 100)}%`
       : t.operator === 'maxMul' ? '×2+' : '';
     this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, opLabel, t.color);

@@ -3,7 +3,7 @@
 import { GameState, formatNum } from '../systems/GameState';
 import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
-import { SKILLS, ACTIVE_SKILLS } from '../data/skills';
+import { SKILLS, SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
 import { AUTO_DROPPERS, CRYSTAL_UPGRADES } from '../data/chapters';
 import { svgIcon, operatorIcon, type IconKey } from './icons';
 import type { PegSave } from '../types';
@@ -209,11 +209,23 @@ export class HUD {
 
   private renderPegShop(list: HTMLElement) {
     for (const cfg of PEG_TYPES) {
-      const unlocked = cfg.unlockChapter <= GameState.chapterId;
+      const chapterUnlocked = cfg.unlockChapter <= GameState.chapterId;
+      const prereqMet = GameState.isPegPrereqMet(cfg);
+      const unlocked = chapterUnlocked && prereqMet;
       const count = GameState.pegs.filter((p) => p.typeId === cfg.id).length;
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, count));
       const afford = GameState.gold >= cost;
       const selected = this.selectedPegType === cfg.id;
+
+      // 锁定原因文案
+      let lockText = '';
+      if (!chapterUnlocked) lockText = `第 ${cfg.unlockChapter} 章解锁`;
+      else if (!prereqMet && cfg.prereq) {
+        const prereq = cfg.prereq;
+        const pre = PEG_MAP[prereq.id];
+        const cur = GameState.pegs.filter((p) => p.typeId === prereq.id).length;
+        lockText = `前置：${pre?.name ?? prereq.id} ${cur}/${prereq.level}`;
+      }
 
       const el = document.createElement('div');
       el.className = `shop-item ${unlocked ? '' : 'locked'}`;
@@ -222,9 +234,10 @@ export class HUD {
         <div class="item-head">
           <div class="item-icon peg-icon" style="border-color:#${cfg.color.toString(16).padStart(6,'0')}">${operatorIcon(cfg.operator, 16, '#'+cfg.color.toString(16).padStart(6,'0'))}</div>
           <div class="item-name">${cfg.name}</div>
+          ${count > 0 ? `<div class="item-level">×${count}</div>` : ''}
         </div>
         <div class="item-desc">${cfg.desc}</div>
-        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` :
+        ${!unlocked ? `<div class="item-cost cant">${lockText}</div>` :
           `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`}
       `;
       if (unlocked) {
@@ -320,23 +333,37 @@ export class HUD {
     list.innerHTML = '';
     for (const cfg of SKILLS) {
       if (cfg.category === 'active') continue;
-      const unlocked = cfg.unlockChapter <= GameState.chapterId;
+      const chapterUnlocked = cfg.unlockChapter <= GameState.chapterId;
+      const prereqMet = GameState.isSkillPrereqMet(cfg);
+      const unlocked = chapterUnlocked && prereqMet;
       const lvl = GameState.getSkillLevel(cfg.id);
-      const maxed = lvl >= cfg.maxLevel;
+      const maxLevel = GameState.getSkillMaxLevel(cfg);
+      const maxed = lvl >= maxLevel;
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
       const afford = GameState.gold >= cost;
+
+      // 锁定原因文案
+      let lockText = '';
+      if (!chapterUnlocked) lockText = `第 ${cfg.unlockChapter} 章解锁`;
+      else if (!prereqMet && cfg.prereq) {
+        const pre = SKILL_MAP[cfg.prereq.id];
+        const cur = GameState.getSkillLevel(cfg.prereq.id);
+        lockText = `前置：${pre?.name ?? cfg.prereq.id} Lv.${cur}/${cfg.prereq.level}`;
+      }
+
       const el = document.createElement('div');
       el.className = `skill-item ${(!unlocked || maxed) ? 'locked' : ''}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
           <div class="item-name">${cfg.name}</div>
-          <div class="item-level">Lv.${lvl}/${cfg.maxLevel}</div>
+          <div class="item-level">Lv.${lvl}/${maxLevel}</div>
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">${cfg.effect(lvl)}</div>
-        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` :
-          `<div class="item-cost ${afford && !maxed ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`}
+        ${!unlocked ? `<div class="item-cost cant">${lockText}</div>` :
+          (maxed ? `<div class="item-cost cant">已满级</div>` :
+          `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`)}
       `;
       if (unlocked && !maxed) {
         el.addEventListener('click', () => {

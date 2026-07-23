@@ -16,6 +16,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `手动弹珠额外 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
     icon: 'charge', desc: '手动点击投下的弹珠获得加成',
+    prereq: { id: 'initialValue', level: 5 }, prereqBonusLevels: 5,
   },
   {
     id: 'multiThrow', name: '多重投掷', category: 'manual', maxLevel: 5,
@@ -23,6 +24,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `同时投下 ${1 + lvl} 颗弹珠`,
     getValue: (lvl) => 1 + lvl,
     icon: 'double', desc: '每次点击额外投下弹珠',
+    prereq: { id: 'chargeThrow', level: 5 }, prereqBonusLevels: 3,
   },
   {
     id: 'critRate', name: '暴击率', category: 'manual', maxLevel: 10,
@@ -30,6 +32,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `碰撞暴击率 +${(lvl * 2)}%`,
     getValue: (lvl) => lvl * 0.02,
     icon: 'crit', desc: '弹珠碰撞钉子时概率暴击',
+    prereq: { id: 'multiThrow', level: 5 }, prereqBonusLevels: 5,
   },
   {
     id: 'critDmg', name: '暴击伤害', category: 'manual', maxLevel: 10,
@@ -37,6 +40,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `暴击倍率 ×${(2 + lvl * 0.25).toFixed(2)}`,
     getValue: (lvl) => 2 + lvl * 0.25,
     icon: 'critDmg', desc: '暴击时获得更高倍率',
+    prereq: { id: 'critRate', level: 5 }, prereqBonusLevels: 5,
   },
   // 自动系
   {
@@ -51,6 +55,7 @@ export const SKILLS: SkillConfig[] = [
     baseCost: 500000, costGrowth: 1, unlockChapter: 4,
     effect: () => '自动器优先选择高收益落点',
     icon: 'smart', desc: '自动投弹器变得更聪明',
+    prereq: { id: 'autoCrit', level: 5 }, prereqBonusLevels: 1,
   },
   {
     id: 'offlineMax', name: '离线时长', category: 'auto', maxLevel: 16,
@@ -58,6 +63,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `离线上限 +${lvl} 小时`,
     getValue: (lvl) => lvl,
     icon: 'offline', desc: '延长离线收益结算时间',
+    prereq: { id: 'smartDrop', level: 1 }, prereqBonusLevels: 5,
   },
   // 全局系
   {
@@ -73,6 +79,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `同屏弹珠上限 +${(lvl * 5)}`,
     getValue: (lvl) => lvl * 5,
     icon: 'box', desc: '允许更多弹珠同时存在',
+    prereq: { id: 'gravity', level: 5 }, prereqBonusLevels: 5,
   },
   {
     id: 'capacityPegs', name: '钉子容量', category: 'global', maxLevel: 10,
@@ -80,6 +87,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `钉子数量上限 +${(lvl * 3)}`,
     getValue: (lvl) => lvl * 3,
     icon: 'pin', desc: '可放置更多钉子',
+    prereq: { id: 'capacity', level: 5 }, prereqBonusLevels: 5,
   },
   {
     id: 'goldBonus', name: '金币加成', category: 'global', maxLevel: 20,
@@ -87,6 +95,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `结算金币 +${(lvl * 5)}%`,
     getValue: (lvl) => lvl * 0.05,
     icon: 'coin', desc: '所有弹珠结算金币提升',
+    prereq: { id: 'capacityPegs', level: 5 }, prereqBonusLevels: 5,
   },
   {
     id: 'sageBlueprint', name: '贤者蓝图', category: 'global', maxLevel: 5,
@@ -94,6 +103,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `钉子等级上限 +${(lvl * 2)}`,
     getValue: (lvl) => lvl * 2,
     icon: 'matrix', desc: '突破单颗钉子的等级上限',
+    prereq: { id: 'goldBonus', level: 5 }, prereqBonusLevels: 3,
   },
   {
     id: 'wallBounce', name: '墙体反弹', category: 'global', maxLevel: 10,
@@ -101,6 +111,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `墙体弹力 +${(lvl * 8)}%`,
     getValue: (lvl) => lvl * 0.08,
     icon: 'pin', desc: '弹珠撞左右墙体时弹力提升，更易在场景内反弹',
+    prereq: { id: 'sageBlueprint', level: 5 }, prereqBonusLevels: 5,
   },
   {
     id: 'wallBonus', name: '墙体金币', category: 'global', maxLevel: 10,
@@ -108,6 +119,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `撞墙结算 +${(lvl * 4)}% 当前数值`,
     getValue: (lvl) => lvl * 0.04,
     icon: 'coin', desc: '弹珠撞墙时按当前数值获得额外金币',
+    prereq: { id: 'wallBounce', level: 5 }, prereqBonusLevels: 5,
   },
   // 主动技能
   {
