@@ -5,7 +5,6 @@
 import Phaser from 'phaser';
 import { GameState, formatNum, bigMulNum } from '../systems/GameState';
 import { PEG_MAP } from '../data/pegs';
-import { ACTIVE_SKILLS } from '../data/skills';
 import { bus, EVT } from '../systems/EventBus';
 import { HUD } from '../ui/HUD';
 import type { PegSave } from '../types';
@@ -67,8 +66,6 @@ export class GameScene extends Phaser.Scene {
   private wallLabels = new WeakSet<MatterJS.Body>();
   // 球上次撞墙时间，避免连续结算
   private ballWallCooldown = new WeakMap<Ball, number>();
-  // 全局粒子 emitter（复用避免性能问题）
-  private globalParticleEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   // 网格布局参数：在 create() 中根据画布尺寸动态计算，使游戏内容居中
   private gridX = 0;
@@ -106,9 +103,9 @@ export class GameScene extends Phaser.Scene {
     const W = this.scale.width, H = this.scale.height;
 
     // 网格居中：根据当前画布尺寸计算 GRID_X/Y，让 12×16 网格水平居中、垂直留出顶部投放区与底部结算区
-    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const gridWidth = BALANCE.gridCols * BALANCE.cellSize;
     const gridH = BALANCE.gridRows * BALANCE.cellSize;
-    this.gridX = (W - gridW) / 2;
+    this.gridX = (W - gridWidth) / 2;
     this.gridY = BALANCE.pegGridTopOffset;
     this.dropZoneH = 70;
     this.settleY = this.gridY + gridH + 10;
@@ -143,10 +140,12 @@ export class GameScene extends Phaser.Scene {
     this.dropZoneRect.setInteractive(new Phaser.Geom.Rectangle(0, 0, W, this.dropZoneH), Phaser.Geom.Rectangle.Contains);
 
     // 结算槽
+    // 结算槽：与钉子网格左右对齐，避免球被墙挡住却落到墙外的判定区
     this.settleSlots = [];
-    const slotW = (W - 40) / BALANCE.bottomSlots;
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const slotW = gridW / BALANCE.bottomSlots;
     for (let i = 0; i < BALANCE.bottomSlots; i++) {
-      const x = 20 + slotW * (i + 0.5);
+      const x = this.gridX + slotW * (i + 0.5);
       const isCenter = i === Math.floor(BALANCE.bottomSlots / 2);
       const color = isCenter ? 0xf0b429 : 0x2db7a3;
       const rect = this.add.rectangle(x, this.settleY + 20, slotW - 8, 40, color, 0.15).setStrokeStyle(2, color, 0.8);
@@ -159,16 +158,6 @@ export class GameScene extends Phaser.Scene {
     // Matter 物理：调整重力
     const gravityMul = 1 + (GameState.getSkillLevel('gravity') || 0) * 0.1;
     this.matter.world.setGravity(0, gravityMul);
-
-    // 全局粒子 emitter（复用，避免每次碰撞创建新 emitter）
-    this.globalParticleEmitter = this.add.particles(0, 0, 'particle', {
-      speed: { min: 40, max: 120 },
-      angle: { min: 0, max: 360 },
-      lifespan: 300,
-      quantity: 0,
-      scale: { start: 1, end: 0 },
-      emitting: false,
-    });
 
     // 左右边墙：放在钉子网格边界两侧，仅覆盖钉子区域高度
     // 左墙 X = GRID_X - wallW/2，右墙 X = GRID_X + gridCols*cellSize + wallW/2
@@ -296,13 +285,6 @@ export class GameScene extends Phaser.Scene {
       this.hud.unmount();
     });
     this.events.on('pause', () => GameState.saveGame());
-
-    // 键盘快捷键：主动技能 1-5
-    this.input.keyboard?.on('keydown-ONE', () => GameState.triggerActive(ACTIVE_SKILLS[0]?.id));
-    this.input.keyboard?.on('keydown-TWO', () => GameState.triggerActive(ACTIVE_SKILLS[1]?.id));
-    this.input.keyboard?.on('keydown-THREE', () => GameState.triggerActive(ACTIVE_SKILLS[2]?.id));
-    this.input.keyboard?.on('keydown-FOUR', () => GameState.triggerActive(ACTIVE_SKILLS[3]?.id));
-    this.input.keyboard?.on('keydown-FIVE', () => GameState.triggerActive(ACTIVE_SKILLS[4]?.id));
   }
 
   // Matter 碰撞处理：球碰钉子或墙时触发
@@ -509,19 +491,16 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: ps.text, scaleX: 1.4, scaleY: 1.4, duration: 80, yoyo: true });
     }
 
-    // 性能优化：粒子用 emit 而非每次创建新 emitter（避免大量 emitter 堆积）
-    if (this.globalParticleEmitter) {
-      this.globalParticleEmitter.setPosition(ball.sprite.x, ball.sprite.y);
-      this.globalParticleEmitter.explode(crit ? 12 : 6, ball.sprite.x, ball.sprite.y);
-    }
-
     if (ball.sprite.texture.key !== this.ballTextureFor(ball.value, ball.golden)) {
       ball.sprite.setTexture(this.ballTextureFor(ball.value, ball.golden));
     }
   }
 
   private settleBall(ball: Ball) {
-    const slotIdx = Math.min(BALANCE.bottomSlots - 1, Math.max(0, Math.floor((ball.sprite.x - 20) / ((this.scale.width - 40) / BALANCE.bottomSlots))));
+    // 判定边界与结算槽绘制保持一致：从 gridX 开始，宽度为网格宽度
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const slotW = gridW / BALANCE.bottomSlots;
+    const slotIdx = Math.min(BALANCE.bottomSlots - 1, Math.max(0, Math.floor((ball.sprite.x - this.gridX) / slotW)));
     const isCenter = slotIdx === Math.floor(BALANCE.bottomSlots / 2);
     const multiplier = isCenter ? 2 : 1;
     let gold = bigMulNum(ball.value, multiplier);
@@ -710,7 +689,6 @@ export class GameScene extends Phaser.Scene {
 
   private tickActives() {
     GameState.tickActives(Date.now());
-    this.hud.updateActives();
   }
 
   private executeBlast() {

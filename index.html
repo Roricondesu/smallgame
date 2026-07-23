@@ -314,57 +314,6 @@
       border-color: var(--gold);
     }
 
-    /* ===== 主动技能栏 ===== */
-    #active-bar {
-      position: absolute;
-      bottom: max(14px, env(safe-area-inset-bottom));
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 8px;
-      pointer-events: auto;
-    }
-    .active-slot {
-      width: 56px; height: 56px;
-      background: var(--panel);
-      border: 2px solid var(--border);
-      border-radius: var(--radius-sm);
-      position: relative;
-      cursor: pointer;
-      overflow: hidden;
-      transition: all 0.15s;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-    .active-slot:hover { border-color: var(--border-strong); }
-    .active-slot.ready {
-      border-color: var(--gold);
-      box-shadow: 0 0 16px rgba(245, 197, 66, 0.4);
-    }
-    .active-slot.active-now {
-      border-color: var(--accent);
-      box-shadow: 0 0 16px rgba(255, 122, 89, 0.6);
-    }
-    .active-slot .icon-wrap {
-      width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .active-slot .icon-wrap svg { width: 26px; height: 26px; }
-    .active-slot .cooldown {
-      position: absolute; left: 0; bottom: 0; width: 100%;
-      background: rgba(5, 7, 9, 0.85);
-      transition: height 0.1s linear;
-    }
-    .active-slot .key-hint {
-      position: absolute; bottom: 3px; right: 4px;
-      font-size: 9px; color: var(--muted);
-      background: rgba(0, 0, 0, 0.6); padding: 1px 4px; border-radius: 3px;
-    }
-    .active-slot .dur-bar {
-      position: absolute; left: 0; top: 0; height: 3px;
-      background: var(--accent); transition: width 0.1s linear;
-    }
-
     /* ===== 模态框 ===== */
     .modal-overlay {
       position: fixed; inset: 0;
@@ -481,7 +430,6 @@
       .side-panel { width: 200px; top: 80px; padding: 10px; }
       #right-panel { right: 8px; }
       #left-panel { left: 8px; }
-      .active-slot { width: 50px; height: 50px; }
       .stat-chip { padding: 6px 10px; font-size: 12px; }
       #chapter-tag { font-size: 11px; padding: 6px 10px; }
     }
@@ -502,9 +450,6 @@
       .side-panel.open { display: block; }
       #left-panel { left: 12px; }
       #right-panel { right: 12px; }
-      #active-bar { gap: 6px; bottom: 14px; }
-      .active-slot { width: 46px; height: 46px; }
-      .active-slot .icon-wrap svg { width: 22px; height: 22px; }
       .icon-btn { padding: 6px 8px; font-size: 11px; }
       .icon-btn span:not([id^="icon"]) { display: none; }
       .modal { padding: 16px; }
@@ -522,8 +467,6 @@
     /* 横屏短屏 */
     @media (max-height: 500px) and (orientation: landscape) {
       .side-panel { top: 50px; max-height: calc(100vh - 110px); }
-      #active-bar { bottom: 8px; }
-      .active-slot { width: 42px; height: 42px; }
     }
 
     /* 面板切换按钮（默认隐藏，移动端显示） */
@@ -578,7 +521,6 @@
       <div id="skill-list"></div>
     </div>
 
-    <div id="active-bar"></div>
     <div id="toast"></div>
   </div>
 

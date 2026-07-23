@@ -4,18 +4,15 @@ import { GameState, formatNum, toBig, fromBig } from '../systems/GameState';
 import { SaveSystem } from '../systems/SaveSystem';
 import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
-import { SKILLS, SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
+import { SKILLS, SKILL_MAP } from '../data/skills';
 import { AUTO_DROPPERS, AUTO_MAP, CRYSTAL_UPGRADES } from '../data/chapters';
 import { svgIcon, operatorIcon, type IconKey } from './icons';
 import type { PegSave } from '../types';
-
-const KEY_HINTS = ['1', '2', '3', '4', '5'];
 
 export class HUD {
   private scene: Phaser.Scene;
   private root: HTMLElement;
   private shopTab: 'pegs' | 'autos' | 'global' = 'pegs';
-  private activeSlots: Map<string, HTMLElement> = new Map();
   private onPlacementSelect?: (typeId: string | null) => void;
   private selectedPegType: string | null = null;
 
@@ -36,7 +33,6 @@ export class HUD {
     this.bindPanelToggles();
     this.renderShop();
     this.renderSkills();
-    this.renderActives();
     this.bindModals();
     this.bindEvents();
     this.updateHeader();
@@ -162,7 +158,7 @@ export class HUD {
     bus.on(EVT.PEG_PLACED, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PEG_UPGRADED, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PEG_SOLD, () => { this.updateHeader(); this.renderShop(); });
-    bus.on(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderSkills(); this.renderActives(); });
+    bus.on(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderSkills(); });
     bus.on(EVT.AUTO_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PRESTIGE_AVAILABLE, () => this.showPrestigeModal());
     bus.on(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
@@ -377,53 +373,6 @@ export class HUD {
         });
       }
       list.appendChild(el);
-    }
-  }
-
-  private renderActives() {
-    const bar = document.getElementById('active-bar')!;
-    bar.innerHTML = '';
-    this.activeSlots.clear();
-    let idx = 0;
-    for (const cfg of ACTIVE_SKILLS) {
-      const el = document.createElement('div');
-      el.className = 'active-slot';
-      el.title = `${cfg.name}: ${cfg.desc} (冷却 ${cfg.cooldown}s)`;
-      el.innerHTML = `
-        <div class="icon-wrap">${svgIcon(cfg.icon as IconKey, 26)}</div>
-        <div class="cooldown" style="height:0%"></div>
-        <div class="dur-bar" style="width:0%"></div>
-        <div class="key-hint">${KEY_HINTS[idx] ?? ''}</div>
-      `;
-      el.addEventListener('click', () => GameState.triggerActive(cfg.id));
-      bar.appendChild(el);
-      this.activeSlots.set(cfg.id, el);
-      idx++;
-    }
-  }
-
-  updateActives() {
-    for (const cfg of ACTIVE_SKILLS) {
-      const el = this.activeSlots.get(cfg.id);
-      if (!el) continue;
-      const info = GameState.activeCooldownInfo(cfg.id);
-      const cdOverlay = el.querySelector('.cooldown') as HTMLElement;
-      const durBar = el.querySelector('.dur-bar') as HTMLElement;
-      if (info.durRatio > 0 && info.durRatio < 1) {
-        el.classList.add('active-now');
-        el.classList.remove('ready');
-        cdOverlay.style.height = '0%';
-        durBar.style.width = `${(1 - info.durRatio) * 100}%`;
-      } else if (!info.ready) {
-        el.classList.remove('active-now', 'ready');
-        cdOverlay.style.height = `${(1 - info.cdRatio) * 100}%`;
-        durBar.style.width = '0%';
-      } else {
-        el.classList.add('ready');
-        el.classList.remove('active-now');
-        cdOverlay.style.height = '0%';
-        durBar.style.width = '0%';
-      }
     }
   }
 
