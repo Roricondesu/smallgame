@@ -29,7 +29,7 @@ interface PegSprite {
   sprite: Phaser.Physics.Matter.Image;
   pegId: string;
   typeId: string;
-  text: Phaser.GameObjects.Text;
+  text: Phaser.GameObjects.Text | null;
   gridX: number;
   gridY: number;
   placeholder?: boolean;
@@ -523,9 +523,8 @@ export class GameScene extends Phaser.Scene {
     if (ball.lastPegId === ps.pegId) return;
     ball.lastPegId = ps.pegId;
 
-    // 占位钉子：显示 +0，不改变数值（纯碰撞反弹，无视觉动画）
+    // 占位钉子：纯碰撞反弹，无文字、无 +0 提示、无动画
     if (ps.placeholder || ps.typeId === 'placeholder') {
-      this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, '+0', 0x7d8896);
       return;
     }
 
@@ -555,8 +554,16 @@ export class GameScene extends Phaser.Scene {
       : t.operator === 'maxMul' ? '×2+' : '';
     this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, opLabel, t.color);
 
+    // 防冻结：先完成旧 tween（恢复目标 scale 到 1），再重置后启动新 tween
+    // 高频碰撞下若直接 add 会让目标卡在放大状态
+    this.tweens.killTweensOf(ps.sprite);
+    ps.sprite.setScale(1);
     this.tweens.add({ targets: ps.sprite, scaleX: 1.3, scaleY: 1.3, duration: 80, yoyo: true });
-    this.tweens.add({ targets: ps.text, scaleX: 1.4, scaleY: 1.4, duration: 80, yoyo: true });
+    if (ps.text) {
+      this.tweens.killTweensOf(ps.text);
+      ps.text.setScale(1);
+      this.tweens.add({ targets: ps.text, scaleX: 1.4, scaleY: 1.4, duration: 80, yoyo: true });
+    }
 
     // 性能优化：粒子用 emit 而非每次创建新 emitter（避免大量 emitter 堆积）
     if (this.globalParticleEmitter) {
@@ -689,14 +696,10 @@ export class GameScene extends Phaser.Scene {
       this.pegLabels.add(sprite.body as MatterJS.Body);
     }
 
-    const text = this.add.text(x, y, '0', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '9px',
-      color: '#7d8896', stroke: '#000', strokeThickness: 2,
-    }).setOrigin(0.5).setAlpha(0.6);
-
+    // 占位钉子不显示文字（纯视觉占位）
     const ps: PegSprite = {
       sprite, pegId: `ph_${gx}_${gy}`, typeId: 'placeholder',
-      text, gridX: gx, gridY: gy, placeholder: true,
+      text: null, gridX: gx, gridY: gy, placeholder: true,
     };
     this.placeholderPegs.set(this.placeholderKey(gx, gy), ps);
     this.pegBySprite.set(sprite, ps);
@@ -707,7 +710,7 @@ export class GameScene extends Phaser.Scene {
     if (!ps) return;
     this.pegBySprite.delete(ps.sprite);
     ps.sprite.destroy();
-    ps.text.destroy();
+    ps.text?.destroy();
     this.placeholderPegs.delete(this.placeholderKey(gx, gy));
   }
 
@@ -715,7 +718,7 @@ export class GameScene extends Phaser.Scene {
     if (cfg.operator === '+') return `+${Math.floor(cfg.operand + (peg.level - 1) * cfg.growth)}`;
     if (cfg.operator === '*') return `×${(cfg.operand + (peg.level - 1) * cfg.growth).toFixed(1)}`;
     if (cfg.operator === '/') return '÷2';
-    if (cfg.operator === '^') return '^2';
+    if (cfg.operator === '^') return `^${(cfg.operand + (peg.level - 1) * cfg.growth).toFixed(1)}`;
     if (cfg.operator === 'addPercent') return '%';
     if (cfg.operator === 'maxMul') return '×2+';
     return '贤';
@@ -727,7 +730,7 @@ export class GameScene extends Phaser.Scene {
     const gx = ps.gridX, gy = ps.gridY;
     this.pegBySprite.delete(ps.sprite);
     ps.sprite.destroy();
-    ps.text.destroy();
+    ps.text?.destroy();
     this.pegSprites.delete(pegId);
     // 卖出后恢复该位置的占位钉子
     if (!this.placeholderPegs.has(this.placeholderKey(gx, gy))) {
@@ -738,7 +741,7 @@ export class GameScene extends Phaser.Scene {
   private updatePegLabel(ps: PegSprite, peg: PegSave) {
     const cfg = PEG_MAP[peg.typeId];
     if (!cfg) return;
-    ps.text.setText(this.pegLabel(cfg, peg));
+    ps.text?.setText(this.pegLabel(cfg, peg));
   }
 
   private updatePlacementCursor(pointer?: Phaser.Input.Pointer) {
