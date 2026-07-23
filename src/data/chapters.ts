@@ -76,28 +76,45 @@ export const CHAPTER_MAP: Record<number, ChapterConfig> = Object.fromEntries(CHA
 
 export const AUTO_DROPPERS: AutoDropperConfig[] = [
   {
-    id: 'I', name: '自动投弹器 I', interval: 3.0, baseCost: 500, costGrowth: 1.6,
-    speedUpgradeCost: 2000, speedUpgradeGrowth: 1.8, speedPerLevel: 0.15,
+    id: 'I', name: '自动投弹器 I', interval: 3.0, baseCost: 500, costGrowth: 1.7,
+    speedUpgradeCost: 2000, speedUpgradeGrowth: 1.9, speedPerLevel: 0.15,
     maxSpeedLevel: 8, maxCount: 10, unlockChapter: 1, icon: 'auto1',
     desc: '每 3 秒自动投下 1 颗弹珠，可购买多个并升级速度',
   },
   {
-    id: 'II', name: '自动投弹器 II', interval: 1.5, baseCost: 5000, costGrowth: 1.7,
-    speedUpgradeCost: 20000, speedUpgradeGrowth: 2.0, speedPerLevel: 0.12,
+    id: 'II', name: '自动投弹器 II', interval: 1.5, baseCost: 5000, costGrowth: 1.8,
+    speedUpgradeCost: 20000, speedUpgradeGrowth: 2.1, speedPerLevel: 0.12,
     maxSpeedLevel: 8, maxCount: 10, unlockChapter: 2, icon: 'auto2',
     desc: '每 1.5 秒投 1 颗，比 I 型更快',
+    prereq: { id: 'I', level: 5 },
   },
   {
-    id: 'III', name: '自动投弹器 III', interval: 0.5, baseCost: 50000, costGrowth: 1.8,
-    speedUpgradeCost: 200000, speedUpgradeGrowth: 2.2, speedPerLevel: 0.08,
+    id: 'III', name: '自动投弹器 III', interval: 0.5, baseCost: 50000, costGrowth: 1.9,
+    speedUpgradeCost: 200000, speedUpgradeGrowth: 2.3, speedPerLevel: 0.08,
     maxSpeedLevel: 6, maxCount: 5, unlockChapter: 3, icon: 'auto3',
     desc: '极速投弹器，每 0.5 秒投 1 颗',
+    prereq: { id: 'II', level: 5 },
   },
   {
-    id: 'multi', name: '多重投弹', interval: 1.0, baseCost: 100000, costGrowth: 2.0,
-    speedUpgradeCost: 400000, speedUpgradeGrowth: 2.5, speedPerLevel: 0.1,
+    id: 'multi', name: '多重投弹', interval: 1.0, baseCost: 100000, costGrowth: 2.1,
+    speedUpgradeCost: 400000, speedUpgradeGrowth: 2.6, speedPerLevel: 0.1,
     maxSpeedLevel: 6, maxCount: 3, unlockChapter: 4, icon: 'double',
     desc: '每次投下 2 颗弹珠',
+    prereq: { id: 'III', level: 3 },
+  },
+  {
+    id: 'IV', name: '自动投弹器 IV', interval: 0.2, baseCost: 800000, costGrowth: 2.0,
+    speedUpgradeCost: 3000000, speedUpgradeGrowth: 2.4, speedPerLevel: 0.05,
+    maxSpeedLevel: 5, maxCount: 3, unlockChapter: 4, icon: 'auto3',
+    desc: '超极速投弹器，每 0.2 秒投 1 颗',
+    prereq: { id: 'III', level: 5 },
+  },
+  {
+    id: 'multi3', name: '三重投弹', interval: 1.2, baseCost: 1500000, costGrowth: 2.2,
+    speedUpgradeCost: 6000000, speedUpgradeGrowth: 2.8, speedPerLevel: 0.08,
+    maxSpeedLevel: 5, maxCount: 2, unlockChapter: 5, icon: 'double',
+    desc: '每次投下 3 颗弹珠',
+    prereq: { id: 'multi', level: 3 },
   },
 ];
 

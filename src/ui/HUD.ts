@@ -4,7 +4,7 @@ import { GameState, formatNum } from '../systems/GameState';
 import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
 import { SKILLS, SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
-import { AUTO_DROPPERS, CRYSTAL_UPGRADES } from '../data/chapters';
+import { AUTO_DROPPERS, AUTO_MAP, CRYSTAL_UPGRADES } from '../data/chapters';
 import { svgIcon, operatorIcon, type IconKey } from './icons';
 import type { PegSave } from '../types';
 
@@ -253,7 +253,9 @@ export class HUD {
 
   private renderAutoShop(list: HTMLElement) {
     for (const cfg of AUTO_DROPPERS) {
-      const unlocked = cfg.unlockChapter <= GameState.chapterId;
+      const chapterUnlocked = cfg.unlockChapter <= GameState.chapterId;
+      const prereqMet = GameState.isAutoPrereqMet(cfg);
+      const unlocked = chapterUnlocked && prereqMet;
       const info = GameState.getAutoDropperInfo(cfg.id);
       const buyCost = GameState.getAutoDropperCost(cfg.id);
       const speedCost = GameState.getAutoDropperSpeedUpgradeCost(cfg.id);
@@ -262,6 +264,15 @@ export class HUD {
       const buyMaxed = info.count >= cfg.maxCount;
       const speedMaxed = info.speedLevel >= cfg.maxSpeedLevel;
       const currentInterval = cfg.interval * Math.max(0.1, 1 - info.speedLevel * cfg.speedPerLevel);
+
+      // 锁定原因文案
+      let lockText = '';
+      if (!chapterUnlocked) lockText = `第 ${cfg.unlockChapter} 章解锁`;
+      else if (!prereqMet && cfg.prereq) {
+        const pre = AUTO_MAP[cfg.prereq.id];
+        const cur = GameState.getAutoDropperInfo(cfg.prereq.id).count;
+        lockText = `前置：${pre?.name ?? cfg.prereq.id} ${cur}/${cfg.prereq.level}`;
+      }
 
       const el = document.createElement('div');
       el.className = `shop-item ${unlocked ? '' : 'locked'}`;
@@ -273,7 +284,7 @@ export class HUD {
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">间隔 ${currentInterval.toFixed(2)}s · 速度 Lv.${info.speedLevel}/${cfg.maxSpeedLevel}</div>
-        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` : `
+        ${!unlocked ? `<div class="item-cost cant">${lockText}</div>` : `
         <div class="item-actions">
           <button class="mini-btn ${buyMaxed ? 'maxed' : (canBuy ? 'afford' : 'cant')}" data-act="buy" ${buyMaxed ? 'disabled' : ''}>
             ${buyMaxed ? '已满' : `${svgIcon('gold', 11)} 买 ${formatNum(buyCost)}`}

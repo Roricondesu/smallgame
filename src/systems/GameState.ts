@@ -398,11 +398,24 @@ class GameStateClass {
     return Math.floor(cfg.speedUpgradeCost * Math.pow(cfg.speedUpgradeGrowth, info.speedLevel));
   }
 
+  /** 前置是否满足：自动器看购买数量 */
+  isAutoPrereqMet(cfg: import('../types').AutoDropperConfig): boolean {
+    if (!cfg.prereq) return true;
+    const info = this.getAutoDropperInfo(cfg.prereq.id);
+    return info.count >= cfg.prereq.level;
+  }
+
   buyAutoDropper(id: string): boolean {
     const cfg = AUTO_MAP[id];
     if (!cfg) return false;
     if (cfg.unlockChapter > this._save.chapterId) {
       bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
+      return false;
+    }
+    if (!this.isAutoPrereqMet(cfg)) {
+      const pre = AUTO_MAP[cfg.prereq!.id];
+      const cur = this.getAutoDropperInfo(cfg.prereq!.id).count;
+      bus.emit(EVT.TOAST, `前置：${pre?.name ?? cfg.prereq!.id} ${cur}/${cfg.prereq!.level}`);
       return false;
     }
     const info = this.getAutoDropperInfo(id);
@@ -452,8 +465,10 @@ class GameStateClass {
       if (!cfg || info.count <= 0) continue;
       const speedMul = Math.max(0.1, 1 - info.speedLevel * cfg.speedPerLevel);
       const interval = cfg.interval * speedMul;
-      const count = cfg.id === 'multi' ? info.count * 2 : info.count;
-      rate += count / interval;
+      // multi/multi3/multiN：每次投多颗，按 id 中的数字决定倍数
+      const mulMatch = cfg.id.match(/^multi(\d+)?$/);
+      const mul = mulMatch ? (mulMatch[1] ? parseInt(mulMatch[1], 10) : 2) : 1;
+      rate += (info.count * mul) / interval;
     }
     return rate;
   }

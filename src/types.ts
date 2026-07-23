@@ -86,6 +86,8 @@ export interface AutoDropperConfig {
   unlockChapter: number;
   icon: import('./ui/icons').IconKey;
   desc: string;
+  /** 前置：需要前置自动器购买数量达到 level 才解锁 */
+  prereq?: { id: string; level: number };
 }
 
 export interface ChapterConfig {

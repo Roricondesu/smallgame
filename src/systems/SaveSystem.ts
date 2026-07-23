@@ -94,13 +94,16 @@ export class SaveSystem {
       if (!cfg || info.count <= 0) continue;
       const speedMul = 1 - info.speedLevel * cfg.speedPerLevel;
       const interval = cfg.interval * Math.max(0.1, speedMul);
-      const count = cfg.id === 'multi' ? info.count * 2 : info.count;
-      rate += count / interval;
+      // multi/multi3/multiN：每次投多颗，按 id 中的数字决定倍数
+      const mulMatch = cfg.id.match(/^multi(\d+)?$/);
+      const mul = mulMatch ? (mulMatch[1] ? parseInt(mulMatch[1], 10) : 2) : 1;
+      rate += (info.count * mul) / interval;
     }
     if (rate <= 0) return { gold: 0, seconds: 0 };
 
+    const offlineRateMul = 1 + (data.skillLevels?.offlineRate || 0) * 0.1;
     const avgValue = Math.max(1, data.ballInitialValue * 100);
-    const gold = diff * rate * avgValue * 0.5;
+    const gold = diff * rate * avgValue * 0.5 * offlineRateMul;
     return { gold: Math.floor(gold), seconds: diff };
   }
 }
