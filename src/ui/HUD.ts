@@ -62,7 +62,16 @@ export class HUD {
 
   private bindHeader() {
     document.getElementById('btn-menu')!.addEventListener('click', () => {
+      // 如果当前已可归零（_ready 状态），在菜单里显示归零试炼按钮
+      const ready = GameState.save.storyProgress.endsWith('_ready');
+      const btn = document.getElementById('menu-prestige')!;
+      btn.style.display = ready ? '' : 'none';
       document.getElementById('modal-menu')!.classList.add('open');
+    });
+    // 菜单里的"归零试炼"按钮：重新打开归零弹窗
+    document.getElementById('menu-prestige')!.addEventListener('click', () => {
+      document.getElementById('modal-menu')!.classList.remove('open');
+      this.showPrestigeModal();
     });
   }
 
