@@ -3,8 +3,8 @@
 import { GameState, formatNum } from '../systems/GameState';
 import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
-import { SKILLS, ACTIVE_SKILLS } from '../data/skills';
-import { AUTO_DROPPERS, CRYSTAL_UPGRADES } from '../data/chapters';
+import { SKILLS, SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
+import { AUTO_DROPPERS, AUTO_MAP, CRYSTAL_UPGRADES } from '../data/chapters';
 import { svgIcon, operatorIcon, type IconKey } from './icons';
 import type { PegSave } from '../types';
 
@@ -190,18 +190,34 @@ export class HUD {
 
   private renderPegShop(list: HTMLElement) {
     for (const cfg of PEG_TYPES) {
-      // 章节未解锁或前置未达：完全隐藏
+      // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      if (!GameState.isPegPrereqMet(cfg)) continue;
+      // 前置的前置都还没解锁才隐藏；只要前置已可见，就显示当前项（带锁定提示）
+      if (cfg.prereq) {
+        const pre = PEG_MAP[cfg.prereq.id];
+        if (pre && pre.unlockChapter > GameState.chapterId) continue;
+        if (pre?.prereq) {
+          const prePre = PEG_MAP[pre.prereq.id];
+          if (prePre && prePre.unlockChapter > GameState.chapterId) continue;
+        }
+      }
 
-      const unlocked = true;
+      const prereqMet = GameState.isPegPrereqMet(cfg);
       const count = GameState.pegs.filter((p) => p.typeId === cfg.id).length;
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, count));
       const afford = GameState.gold >= cost;
       const selected = this.selectedPegType === cfg.id;
 
+      // 前置未达成的锁定文案
+      let lockText = '';
+      if (!prereqMet && cfg.prereq) {
+        const pre = PEG_MAP[cfg.prereq.id];
+        const cur = GameState.pegs.filter((p) => p.typeId === cfg.prereq!.id).length;
+        lockText = `前置：${pre?.name ?? cfg.prereq.id} ${cur}/${cfg.prereq.level}`;
+      }
+
       const el = document.createElement('div');
-      el.className = `shop-item ${unlocked ? '' : 'locked'}`;
+      el.className = `shop-item ${prereqMet ? '' : 'locked'}`;
       if (selected) el.style.borderColor = '#f5c542';
       el.innerHTML = `
         <div class="item-head">
@@ -210,34 +226,50 @@ export class HUD {
           ${count > 0 ? `<div class="item-level">×${count}</div>` : ''}
         </div>
         <div class="item-desc">${cfg.desc}</div>
-        <div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>
+        ${!prereqMet ? `<div class="item-cost cant">${lockText}</div>` :
+          `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`}
       `;
-      el.addEventListener('click', () => {
-        this.selectedPegType = this.selectedPegType === cfg.id ? null : cfg.id;
-        this.onPlacementSelect?.(this.selectedPegType);
-        this.renderShop();
-      });
+      if (prereqMet) {
+        el.addEventListener('click', () => {
+          this.selectedPegType = this.selectedPegType === cfg.id ? null : cfg.id;
+          this.onPlacementSelect?.(this.selectedPegType);
+          this.renderShop();
+        });
+      }
       list.appendChild(el);
     }
   }
 
   private renderAutoShop(list: HTMLElement) {
     for (const cfg of AUTO_DROPPERS) {
-      // 章节未解锁或前置未达：完全隐藏
+      // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      if (!GameState.isAutoPrereqMet(cfg)) continue;
+      // 前置的前置都还没解锁才隐藏；只要前置已可见，就显示当前项（带锁定提示）
+      if (cfg.prereq) {
+        const pre = AUTO_MAP[cfg.prereq.id];
+        if (pre && pre.unlockChapter > GameState.chapterId) continue;
+      }
 
+      const prereqMet = GameState.isAutoPrereqMet(cfg);
       const info = GameState.getAutoDropperInfo(cfg.id);
       const buyCost = GameState.getAutoDropperCost(cfg.id);
       const speedCost = GameState.getAutoDropperSpeedUpgradeCost(cfg.id);
-      const canBuy = info.count < cfg.maxCount && GameState.gold >= buyCost;
-      const canSpeed = info.count > 0 && info.speedLevel < cfg.maxSpeedLevel && GameState.gold >= speedCost;
+      const canBuy = prereqMet && info.count < cfg.maxCount && GameState.gold >= buyCost;
+      const canSpeed = prereqMet && info.count > 0 && info.speedLevel < cfg.maxSpeedLevel && GameState.gold >= speedCost;
       const buyMaxed = info.count >= cfg.maxCount;
       const speedMaxed = info.speedLevel >= cfg.maxSpeedLevel;
       const currentInterval = cfg.interval * Math.max(0.1, 1 - info.speedLevel * cfg.speedPerLevel);
 
+      // 前置未达成的锁定文案
+      let lockText = '';
+      if (!prereqMet && cfg.prereq) {
+        const pre = AUTO_MAP[cfg.prereq.id];
+        const cur = GameState.getAutoDropperInfo(cfg.prereq.id).count;
+        lockText = `前置：${pre?.name ?? cfg.prereq.id} ${cur}/${cfg.prereq.level}`;
+      }
+
       const el = document.createElement('div');
-      el.className = 'shop-item';
+      el.className = `shop-item ${prereqMet ? '' : 'locked'}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
@@ -246,6 +278,7 @@ export class HUD {
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">间隔 ${currentInterval.toFixed(2)}s · 速度 Lv.${info.speedLevel}/${cfg.maxSpeedLevel}</div>
+        ${!prereqMet ? `<div class="item-cost cant">${lockText}</div>` : `
         <div class="item-actions">
           <button class="mini-btn ${buyMaxed ? 'maxed' : (canBuy ? 'afford' : 'cant')}" data-act="buy" ${buyMaxed ? 'disabled' : ''}>
             ${buyMaxed ? '已满' : `${svgIcon('gold', 11)} 买 ${formatNum(buyCost)}`}
@@ -253,16 +286,18 @@ export class HUD {
           <button class="mini-btn speed ${speedMaxed ? 'maxed' : (canSpeed ? 'afford' : 'cant')}" data-act="speed" ${speedMaxed || info.count === 0 ? 'disabled' : ''}>
             ${speedMaxed ? '满速' : `${svgIcon('gold', 11)} 升 ${formatNum(speedCost)}`}
           </button>
-        </div>
+        </div>`}
       `;
-      el.querySelector('[data-act="buy"]')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (GameState.buyAutoDropper(cfg.id)) this.renderShop();
-      });
-      el.querySelector('[data-act="speed"]')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (GameState.upgradeAutoDropperSpeed(cfg.id)) this.renderShop();
-      });
+      if (prereqMet) {
+        el.querySelector('[data-act="buy"]')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (GameState.buyAutoDropper(cfg.id)) this.renderShop();
+        });
+        el.querySelector('[data-act="speed"]')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (GameState.upgradeAutoDropperSpeed(cfg.id)) this.renderShop();
+        });
+      }
       list.appendChild(el);
     }
   }
@@ -305,18 +340,31 @@ export class HUD {
     list.innerHTML = '';
     for (const cfg of SKILLS) {
       if (cfg.category === 'active') continue;
-      // 章节未解锁或前置未达：完全隐藏
+      // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
-      if (!GameState.isSkillPrereqMet(cfg)) continue;
+      // 前置的前置都还没解锁才隐藏；只要前置已可见，就显示当前项（带锁定提示）
+      if (cfg.prereq) {
+        const pre = SKILL_MAP[cfg.prereq.id];
+        if (pre && pre.unlockChapter > GameState.chapterId) continue;
+      }
 
+      const prereqMet = GameState.isSkillPrereqMet(cfg);
       const lvl = GameState.getSkillLevel(cfg.id);
       const maxLevel = GameState.getSkillMaxLevel(cfg);
       const maxed = lvl >= maxLevel;
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
       const afford = GameState.gold >= cost;
 
+      // 前置未达成的锁定文案
+      let lockText = '';
+      if (!prereqMet && cfg.prereq) {
+        const pre = SKILL_MAP[cfg.prereq.id];
+        const cur = GameState.getSkillLevel(cfg.prereq.id);
+        lockText = `前置：${pre?.name ?? cfg.prereq.id} Lv.${cur}/${cfg.prereq.level}`;
+      }
+
       const el = document.createElement('div');
-      el.className = `skill-item ${maxed ? 'locked' : ''}`;
+      el.className = `skill-item ${(!prereqMet || maxed) ? 'locked' : ''}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
@@ -325,10 +373,11 @@ export class HUD {
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">${cfg.effect(lvl)}</div>
-        ${maxed ? `<div class="item-cost cant">已满级</div>` :
-          `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`}
+        ${!prereqMet ? `<div class="item-cost cant">${lockText}</div>` :
+          (maxed ? `<div class="item-cost cant">已满级</div>` :
+          `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`)}
       `;
-      if (!maxed) {
+      if (prereqMet && !maxed) {
         el.addEventListener('click', () => {
           GameState.buySkill(cfg.id);
         });
