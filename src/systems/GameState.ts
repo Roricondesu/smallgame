@@ -8,7 +8,7 @@ import { CHAPTERS, CHAPTER_MAP, AUTO_MAP, CRYSTAL_MAP } from '../data/chapters';
 import type { SaveData, PegSave, AutoDropperSave } from '../types';
 import { BALANCE } from '../types';
 
-const MAX_NUMBER = 1e308;
+const MAX_NUMBER = Number.MAX_VALUE; // ≈ 1.797e308，不再提前截断
 
 // 安全加法/乘法，防止 Infinity
 export function safeAdd(a: number, b: number): number {
@@ -23,7 +23,7 @@ export function safeMul(a: number, b: number): number {
 }
 
 export function formatNum(n: number): string {
-  if (!isFinite(n) || n >= 1e308) return '∞';
+  if (!isFinite(n)) return '∞';
   if (n < 1) return '0';
   if (n < 1000) {
     if (Number.isInteger(n)) return String(n);
@@ -40,7 +40,7 @@ export function formatNum(n: number): string {
 }
 
 export function shortNum(n: number): string {
-  if (!isFinite(n) || n >= 1e308) return '∞';
+  if (!isFinite(n)) return '∞';
   if (n < 1000) return String(Math.floor(n));
   let k = Math.floor(Math.log10(n) / 3);
   if (k < 1) k = 1;

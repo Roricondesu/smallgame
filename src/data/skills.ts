@@ -5,13 +5,13 @@ import type { SkillConfig } from '../types';
 export const SKILLS: SkillConfig[] = [
   // 手动系
   {
-    id: 'initialValue', name: '初始弹珠数字', category: 'manual', maxLevel: 20,
+    id: 'initialValue', name: '初始弹珠数字', category: 'manual', maxLevel: 50,
     baseCost: 50, costGrowth: 1.8, unlockChapter: 1,
     effect: (lvl) => `初始值提升至 ${[1,5,10,25,50,100,250,500,1000,2500,5000,10000][lvl] ?? 10000 * Math.pow(2, lvl-11)}`,
     icon: 'ball', desc: '提升每次投下的弹珠起始数值',
   },
   {
-    id: 'chargeThrow', name: '蓄力投掷', category: 'manual', maxLevel: 10,
+    id: 'chargeThrow', name: '蓄力投掷', category: 'manual', maxLevel: 30,
     baseCost: 300, costGrowth: 1.9, unlockChapter: 1,
     effect: (lvl) => `手动弹珠额外 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
@@ -19,7 +19,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'initialValue', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'chargeThrow2', name: '蓄力大师', category: 'manual', maxLevel: 10,
+    id: 'chargeThrow2', name: '蓄力大师', category: 'manual', maxLevel: 30,
     baseCost: 5000, costGrowth: 2.1, unlockChapter: 3,
     effect: (lvl) => `手动弹珠额外 +${(lvl * 15)}%`,
     getValue: (lvl) => 1 + lvl * 0.15,
@@ -27,7 +27,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'chargeThrow', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'multiThrow', name: '多重投掷', category: 'manual', maxLevel: 5,
+    id: 'multiThrow', name: '多重投掷', category: 'manual', maxLevel: 15,
     baseCost: 800, costGrowth: 2.6, unlockChapter: 2,
     effect: (lvl) => `同时投下 ${1 + lvl} 颗弹珠`,
     getValue: (lvl) => 1 + lvl,
@@ -35,7 +35,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'chargeThrow2', level: 5 }, prereqBonusLevels: 3,
   },
   {
-    id: 'critRate', name: '暴击率', category: 'manual', maxLevel: 10,
+    id: 'critRate', name: '暴击率', category: 'manual', maxLevel: 30,
     baseCost: 500, costGrowth: 2.0, unlockChapter: 1,
     effect: (lvl) => `碰撞暴击率 +${(lvl * 2)}%`,
     getValue: (lvl) => lvl * 0.02,
@@ -43,7 +43,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'multiThrow', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'critDmg', name: '暴击伤害', category: 'manual', maxLevel: 10,
+    id: 'critDmg', name: '暴击伤害', category: 'manual', maxLevel: 30,
     baseCost: 1000, costGrowth: 2.1, unlockChapter: 2,
     effect: (lvl) => `暴击倍率 ×${(2 + lvl * 0.25).toFixed(2)}`,
     getValue: (lvl) => 2 + lvl * 0.25,
@@ -51,7 +51,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'critRate', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'critDmg2', name: '致命一击', category: 'manual', maxLevel: 10,
+    id: 'critDmg2', name: '致命一击', category: 'manual', maxLevel: 30,
     baseCost: 8000, costGrowth: 2.3, unlockChapter: 4,
     effect: (lvl) => `暴击倍率额外 +${(lvl * 0.5).toFixed(1)}`,
     getValue: (lvl) => lvl * 0.5,
@@ -60,7 +60,7 @@ export const SKILLS: SkillConfig[] = [
   },
   // 自动系
   {
-    id: 'autoCrit', name: '自动暴击', category: 'auto', maxLevel: 5,
+    id: 'autoCrit', name: '自动暴击', category: 'auto', maxLevel: 15,
     baseCost: 3000, costGrowth: 2.3, unlockChapter: 2,
     effect: (lvl) => `自动弹珠暴击率 +${(lvl * 5)}%`,
     getValue: (lvl) => lvl * 0.05,
@@ -74,7 +74,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'autoCrit', level: 5 }, prereqBonusLevels: 1,
   },
   {
-    id: 'offlineMax', name: '离线时长', category: 'auto', maxLevel: 16,
+    id: 'offlineMax', name: '离线时长', category: 'auto', maxLevel: 30,
     baseCost: 200000, costGrowth: 1.7, unlockChapter: 2,
     effect: (lvl) => `离线上限 +${lvl} 小时`,
     getValue: (lvl) => lvl,
@@ -82,7 +82,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'smartDrop', level: 1 }, prereqBonusLevels: 5,
   },
   {
-    id: 'offlineRate', name: '离线效率', category: 'auto', maxLevel: 10,
+    id: 'offlineRate', name: '离线效率', category: 'auto', maxLevel: 30,
     baseCost: 800000, costGrowth: 1.9, unlockChapter: 3,
     effect: (lvl) => `离线收益 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
@@ -91,14 +91,14 @@ export const SKILLS: SkillConfig[] = [
   },
   // 全局系
   {
-    id: 'gravity', name: '重力调节', category: 'global', maxLevel: 10,
+    id: 'gravity', name: '重力调节', category: 'global', maxLevel: 30,
     baseCost: 400, costGrowth: 1.8, unlockChapter: 1,
     effect: (lvl) => `下落速度 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
     icon: 'gravity', desc: '弹珠下落更快，结算更频繁',
   },
   {
-    id: 'capacity', name: '弹珠容量', category: 'global', maxLevel: 10,
+    id: 'capacity', name: '弹珠容量', category: 'global', maxLevel: 30,
     baseCost: 600, costGrowth: 1.9, unlockChapter: 1,
     effect: (lvl) => `同屏弹珠上限 +${(lvl * 5)}`,
     getValue: (lvl) => lvl * 5,
@@ -106,7 +106,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'gravity', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'capacityPegs', name: '钉子容量', category: 'global', maxLevel: 10,
+    id: 'capacityPegs', name: '钉子容量', category: 'global', maxLevel: 30,
     baseCost: 1000, costGrowth: 2.0, unlockChapter: 1,
     effect: (lvl) => `钉子数量上限 +${(lvl * 3)}`,
     getValue: (lvl) => lvl * 3,
@@ -114,7 +114,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'capacity', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'goldBonus', name: '金币加成', category: 'global', maxLevel: 20,
+    id: 'goldBonus', name: '金币加成', category: 'global', maxLevel: 50,
     baseCost: 1500, costGrowth: 1.9, unlockChapter: 1,
     effect: (lvl) => `结算金币 +${(lvl * 5)}%`,
     getValue: (lvl) => lvl * 0.05,
@@ -122,7 +122,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'capacityPegs', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'goldBonus2', name: '财富共鸣', category: 'global', maxLevel: 15,
+    id: 'goldBonus2', name: '财富共鸣', category: 'global', maxLevel: 30,
     baseCost: 20000, costGrowth: 2.1, unlockChapter: 4,
     effect: (lvl) => `结算金币额外 +${(lvl * 8)}%`,
     getValue: (lvl) => lvl * 0.08,
@@ -130,7 +130,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'goldBonus', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'sageBlueprint', name: '贤者蓝图', category: 'global', maxLevel: 5,
+    id: 'sageBlueprint', name: '贤者蓝图', category: 'global', maxLevel: 15,
     baseCost: 50000, costGrowth: 2.6, unlockChapter: 3,
     effect: (lvl) => `钉子等级上限 +${(lvl * 2)}`,
     getValue: (lvl) => lvl * 2,
@@ -138,7 +138,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'goldBonus2', level: 5 }, prereqBonusLevels: 3,
   },
   {
-    id: 'wallBounce', name: '墙体反弹', category: 'global', maxLevel: 10,
+    id: 'wallBounce', name: '墙体反弹', category: 'global', maxLevel: 30,
     baseCost: 1200, costGrowth: 1.8, unlockChapter: 1,
     effect: (lvl) => `墙体弹力 +${(lvl * 8)}%`,
     getValue: (lvl) => lvl * 0.08,
@@ -146,7 +146,7 @@ export const SKILLS: SkillConfig[] = [
     prereq: { id: 'sageBlueprint', level: 5 }, prereqBonusLevels: 5,
   },
   {
-    id: 'wallBonus', name: '墙体金币', category: 'global', maxLevel: 10,
+    id: 'wallBonus', name: '墙体金币', category: 'global', maxLevel: 30,
     baseCost: 2500, costGrowth: 1.9, unlockChapter: 2,
     effect: (lvl) => `撞墙结算 +${(lvl * 4)}% 当前数值`,
     getValue: (lvl) => lvl * 0.04,
