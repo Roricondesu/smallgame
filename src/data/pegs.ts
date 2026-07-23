@@ -81,7 +81,7 @@ export const PEG_TYPES: PegConfig[] = [
   {
     id: 'maxMul', name: 'max(×2,×3) 钉', operator: 'maxMul', operand: 0, growth: 0.1,
     baseCost: 12000, costGrowth: 2.3, color: 0xffa198, icon: 'double',
-    unlockChapter: 3, desc: '至少 ×2，升级后概率 ×3', maxLevel: 15,
+    unlockChapter: 4, desc: '至少 ×2，升级后概率 ×3', maxLevel: 15,
     prereq: { id: 'square', level: 5 }, prereqBonusLevels: 5,
   },
   // 贤者系

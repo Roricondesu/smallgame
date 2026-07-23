@@ -199,6 +199,11 @@ export class HUD {
     for (const cfg of PEG_TYPES) {
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
+      // 直接前置本身的前置未达 → 当前项隐藏（递归隐藏：前置链上某项未解锁则整条链不显示）
+      if (cfg.prereq) {
+        const pre = PEG_MAP[cfg.prereq.id];
+        if (pre && !GameState.isPegPrereqMet(pre)) continue;
+      }
 
       const prereqMet = GameState.isPegPrereqMet(cfg);
       const count = GameState.pegs.filter((p) => p.typeId === cfg.id).length;
@@ -242,6 +247,11 @@ export class HUD {
     for (const cfg of AUTO_DROPPERS) {
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
+      // 直接前置本身的前置未达 → 当前项隐藏（递归隐藏）
+      if (cfg.prereq) {
+        const pre = AUTO_MAP[cfg.prereq.id];
+        if (pre && !GameState.isAutoPrereqMet(pre)) continue;
+      }
 
       const prereqMet = GameState.isAutoPrereqMet(cfg);
       const info = GameState.getAutoDropperInfo(cfg.id);
@@ -335,6 +345,11 @@ export class HUD {
       if (cfg.category === 'active') continue;
       // 章节未解锁：完全隐藏
       if (cfg.unlockChapter > GameState.chapterId) continue;
+      // 直接前置本身的前置未达 → 当前项隐藏（递归隐藏）
+      if (cfg.prereq) {
+        const pre = SKILL_MAP[cfg.prereq.id];
+        if (pre && !GameState.isSkillPrereqMet(pre)) continue;
+      }
 
       const prereqMet = GameState.isSkillPrereqMet(cfg);
       const lvl = GameState.getSkillLevel(cfg.id);
