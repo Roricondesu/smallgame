@@ -16,11 +16,19 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  // Matter.js 物理引擎：真正的刚体物理，能完美处理圆形钉子+弹珠碰撞反弹
   physics: {
-    default: 'arcade',
-    arcade: {
-      gravity: { x: 0, y: 400 },
+    default: 'matter',
+    matter: {
+      gravity: { x: 0, y: 1 },
       debug: false,
+      // 让 Matter 自己管理边界
+      setBounds: {
+        left: true,
+        right: true,
+        top: false,
+        bottom: false,
+      },
     },
   },
   scene: [BootScene, MenuScene, GameScene, StoryScene, OfflineReportScene],

@@ -1,5 +1,6 @@
-// 主游戏场景：物理弹珠 + 钉子布局 + HUD 交互
-// 物理修复：使用 staticGroup 存放钉子，弹珠用动态 body，collider 自动计算反弹
+// 主游戏场景：Matter.js 物理弹珠 + 钉子布局 + HUD 交互
+// 使用 Matter.js 真实刚体物理：圆形钉子（static）+ 圆形弹珠（dynamic），
+// restitution 控制弹力，collider 自动计算反弹
 
 import Phaser from 'phaser';
 import { GameState, formatNum } from '../systems/GameState';
@@ -10,8 +11,9 @@ import { HUD } from '../ui/HUD';
 import type { PegSave } from '../types';
 import { BALANCE } from '../types';
 
+// Matter 弹珠对象
 interface Ball {
-  sprite: Phaser.Physics.Arcade.Image;
+  sprite: Phaser.Physics.Matter.Image;
   text: Phaser.GameObjects.Text;
   value: number;
   source: 'manual' | 'auto';
@@ -20,8 +22,9 @@ interface Ball {
   lastPegId?: string;
 }
 
+// Matter 钉子对象
 interface PegSprite {
-  sprite: Phaser.Physics.Arcade.Image;
+  sprite: Phaser.Physics.Matter.Image;
   pegId: string;
   typeId: string;
   text: Phaser.GameObjects.Text;
@@ -36,10 +39,15 @@ const GRID_Y = BALANCE.pegGridTopOffset;
 const DROP_ZONE_H = 70;
 const SETTLE_Y = GRID_Y + BALANCE.gridRows * BALANCE.cellSize + 10;
 
+// 钉子半径（视觉与碰撞体一致）
+const PEG_RADIUS = 9;
+// 弹珠半径
+const BALL_RADIUS = 8;
+// 弹力系数（0=不弹，1=完全弹性）
+const RESTITUTION = 0.7;
+
 export class GameScene extends Phaser.Scene {
   private balls: Ball[] = [];
-  private ballsGroup!: Phaser.Physics.Arcade.Group;
-  private pegsGroup!: Phaser.Physics.Arcade.StaticGroup;
   private pegSprites: Map<string, PegSprite> = new Map();
   private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
@@ -50,6 +58,9 @@ export class GameScene extends Phaser.Scene {
   private frenzyOverlay!: Phaser.GameObjects.Rectangle;
   private placementCursor: Phaser.GameObjects.Arc | null = null;
   private autoAccumulator = 0;
+  // 球/钉子的碰撞体集合，用于碰撞回调过滤
+  private ballLabels = new WeakSet<MatterJS.Body>();
+  private pegLabels = new WeakSet<MatterJS.Body>();
 
   // 六边形蜂窝布局：奇数行向右偏移半个格子
   private gridToPixel(gx: number, gy: number): { x: number; y: number } {
@@ -84,7 +95,7 @@ export class GameScene extends Phaser.Scene {
 
     this.drawBackground();
 
-    // 六边形蜂窝网格背景：只画点阵不画方格
+    // 六边形蜂窝网格背景：点阵
     const gridBg = this.add.graphics();
     gridBg.fillStyle(0xffffff, 0.04);
     for (let gy = 0; gy < BALANCE.gridRows; gy++) {
@@ -94,7 +105,6 @@ export class GameScene extends Phaser.Scene {
         gridBg.fillCircle(x, y, 3);
       }
     }
-    // 网格边框
     this.add.rectangle(
       GRID_X + BALANCE.gridCols * BALANCE.cellSize / 2,
       GRID_Y + BALANCE.gridRows * BALANCE.cellSize / 2,
@@ -108,7 +118,7 @@ export class GameScene extends Phaser.Scene {
       .setStrokeStyle(1, 0xf0b429, 0.5);
     this.dropZoneRect.setInteractive(new Phaser.Geom.Rectangle(0, 0, W, DROP_ZONE_H), Phaser.Geom.Rectangle.Contains);
     this.add.text(W / 2, DROP_ZONE_H / 2, '点击此处投下弹珠 ↓', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '14px', color: '#f0b429',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '14px', color: '#f0b429',
     }).setOrigin(0.5).setAlpha(0.7);
 
     // 结算槽
@@ -121,30 +131,17 @@ export class GameScene extends Phaser.Scene {
       const rect = this.add.rectangle(x, SETTLE_Y + 20, slotW - 8, 40, color, 0.15).setStrokeStyle(2, color, 0.8);
       this.settleSlots.push(rect);
       this.add.text(x, SETTLE_Y + 20, isCenter ? '×2' : '×1', {
-        fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '14px', color: isCenter ? '#f0b429' : '#2db7a3',
+        fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '14px', color: isCenter ? '#f0b429' : '#2db7a3',
       }).setOrigin(0.5);
     }
 
-    // 物理世界
-    this.physics.world.setBoundsCollision(true, true, true, false);
-    this.physics.world.gravity.y = BALANCE.gravityBase * (1 + (GameState.getSkillLevel('gravity') || 0) * 0.1);
+    // Matter 物理：调整重力
+    const gravityMul = 1 + (GameState.getSkillLevel('gravity') || 0) * 0.1;
+    this.matter.world.setGravity(0, gravityMul);
 
-    // 球：动态组（受重力，会反弹）
-    this.ballsGroup = this.physics.add.group();
-    // 钉子：静态组（StaticGroup）—— Phaser 官方推荐方案
-    // 静态体不会移动，collider 会正确计算动态球与静态钉子的碰撞反弹
-    this.pegsGroup = this.physics.add.staticGroup();
-
-    this.physics.add.collider(this.ballsGroup, this.pegsGroup, (ballObj, pegObj) => {
-      const ball = this.balls.find((b) => b.sprite === ballObj);
-      const ps = [...this.pegSprites.values()].find((p) => p.sprite === pegObj)
-        || [...this.placeholderPegs.values()].find((p) => p.sprite === pegObj);
-      if (ball && ps) this.onBallPeg(ball, ps);
-    }, undefined, this);
-
-    // 边墙（静态）
-    this.physics.add.existing(this.add.rectangle(0, H / 2, 4, H, 0x30363d).setOrigin(0, 0.5), true);
-    this.physics.add.existing(this.add.rectangle(W, H / 2, 4, H, 0x30363d).setOrigin(1, 0.5), true);
+    // 左右边墙（静态矩形）
+    this.matter.add.rectangle(2, H / 2, 4, H, { isStatic: true, label: 'wall' });
+    this.matter.add.rectangle(W - 2, H / 2, 4, H, { isStatic: true, label: 'wall' });
 
     // 加载钉子（真实）
     const occupied = new Set<string>();
@@ -155,6 +152,14 @@ export class GameScene extends Phaser.Scene {
 
     // 初始化占位钉子（显示 0，可被替换）
     this.initPlaceholders(occupied);
+
+    // Matter 碰撞事件：使用 collisionStart
+    this.matter.world.on('collisionstart', (event: MatterJS.IEventCollision<MatterJS.Engine>) => {
+      for (const pair of event.pairs) {
+        const { bodyA, bodyB } = pair;
+        this.handleCollision(bodyA, bodyB);
+      }
+    });
 
     // 输入事件
     this.dropZoneRect.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
@@ -199,7 +204,7 @@ export class GameScene extends Phaser.Scene {
 
     // 连击显示
     this.comboDisplay = this.add.text(W - 20, 80, '', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '16px', color: '#f0b429',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '16px', color: '#f0b429',
     }).setOrigin(1, 0).setAlpha(0);
 
     // 狂热 overlay
@@ -211,7 +216,7 @@ export class GameScene extends Phaser.Scene {
       if (p.skillId === 'frenzy' || p.skillId === 'rhythm') {
         this.tweens.add({ targets: this.frenzyOverlay, alpha: 0.12, duration: 200 });
       } else if (p.skillId === 'slowdown') {
-        this.physics.world.timeScale = 0.5;
+        this.matter.world.engine.timing.timeScale = 0.5;
       } else if (p.skillId === 'blast') {
         this.executeBlast();
       }
@@ -221,7 +226,7 @@ export class GameScene extends Phaser.Scene {
       if (id === 'frenzy' || id === 'rhythm') {
         this.tweens.add({ targets: this.frenzyOverlay, alpha: 0, duration: 200 });
       } else if (id === 'slowdown') {
-        this.physics.world.timeScale = 1;
+        this.matter.world.engine.timing.timeScale = 1;
       }
     });
 
@@ -250,6 +255,26 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-FIVE', () => GameState.triggerActive(ACTIVE_SKILLS[4]?.id));
   }
 
+  // Matter 碰撞处理：球碰钉子时触发数值运算
+  private handleCollision(bodyA: MatterJS.Body, bodyB: MatterJS.Body) {
+    // 找出哪个是球，哪个是钉子
+    let ballBody: MatterJS.Body | null = null;
+    let pegBody: MatterJS.Body | null = null;
+
+    if (this.ballLabels.has(bodyA) && this.pegLabels.has(bodyB)) {
+      ballBody = bodyA; pegBody = bodyB;
+    } else if (this.ballLabels.has(bodyB) && this.pegLabels.has(bodyA)) {
+      ballBody = bodyB; pegBody = bodyA;
+    }
+
+    if (!ballBody || !pegBody) return;
+
+    const ball = this.balls.find((b) => b.sprite.body === ballBody);
+    const ps = [...this.pegSprites.values()].find((p) => p.sprite.body === pegBody)
+      || [...this.placeholderPegs.values()].find((p) => p.sprite.body === pegBody);
+    if (ball && ps) this.onBallPeg(ball, ps);
+  }
+
   // 程序化绘制每章背景
   private drawBackground() {
     const W = this.scale.width, H = this.scale.height;
@@ -257,7 +282,6 @@ export class GameScene extends Phaser.Scene {
     const bg = this.add.graphics();
 
     if (ch.id === 1) {
-      // 暖色村庄：星空 + 屋顶轮廓
       for (let i = 0; i < 80; i++) {
         bg.fillStyle(0xffffff, Math.random() * 0.6 + 0.2);
         bg.fillRect(Math.random() * W, Math.random() * (H - 200), 2, 2);
@@ -273,7 +297,6 @@ export class GameScene extends Phaser.Scene {
         bg.fillRect(x + 30, H - 50, 4, 4);
       }
     } else if (ch.id === 2) {
-      // 蓝色遗迹：符文光柱
       for (let i = 0; i < 100; i++) {
         bg.fillStyle(0x5ad1ff, Math.random() * 0.3 + 0.05);
         bg.fillRect(Math.random() * W, Math.random() * H, 2, 2);
@@ -286,7 +309,6 @@ export class GameScene extends Phaser.Scene {
       bg.fillStyle(0x0a1a15, 1);
       bg.fillRect(0, H - 60, W, 60);
     } else if (ch.id === 3) {
-      // 金辉城：金色光点
       for (let i = 0; i < 50; i++) {
         bg.fillStyle(0xffcc33, Math.random() * 0.4);
         bg.fillRect(Math.random() * W, Math.random() * H, 3, 3);
@@ -296,7 +318,6 @@ export class GameScene extends Phaser.Scene {
       bg.fillStyle(0xffcc33, 0.1);
       bg.fillRect(0, H - 80, W, 80);
     } else if (ch.id === 4) {
-      // 冰冷圣殿
       for (let i = 0; i < 5; i++) {
         const x = (i + 1) * (W / 6);
         bg.fillStyle(0xccccff, 0.06);
@@ -307,7 +328,6 @@ export class GameScene extends Phaser.Scene {
         bg.fillRect(Math.random() * W, Math.random() * H, 1, 1);
       }
     } else {
-      // 宇宙
       for (let i = 0; i < 250; i++) {
         const c = Math.random() > 0.5 ? 0xaa88ff : 0xffffff;
         bg.fillStyle(c, Math.random() * 0.7 + 0.1);
@@ -352,28 +372,38 @@ export class GameScene extends Phaser.Scene {
     if (this.balls.length >= BALANCE.maxBallsBase + GameState.getSkillLevel('capacity') * 5) return;
     const golden = GameState.isSkillActive('goldenRain');
     const texture = this.ballTextureFor(value, golden);
-    const sprite = this.physics.add.image(x, y, texture);
-    // 先设显示尺寸，再设圆形碰撞体（不传 offset，让圆心居中于 sprite）
-    sprite.setDisplaySize(16, 16);
-    sprite.setCircle(7);
-    sprite.setCollideWorldBounds(true);
-    sprite.setBounce(0.92); // 高弹性
-    sprite.setVelocityY(50);
-    // 微量水平随机，避免球垂直堆叠
-    sprite.setVelocityX(Phaser.Math.Between(-20, 20));
+
+    // Matter 圆形弹珠：restitution 控制弹力，friction 较低避免粘附
+    const sprite = this.matter.add.image(x, y, texture, undefined, {
+      shape: { type: 'circle', radius: BALL_RADIUS },
+      restitution: RESTITUTION,
+      friction: 0.005,
+      frictionAir: 0.001,
+      density: 0.002,
+      label: 'ball',
+    });
+    sprite.setDisplaySize(BALL_RADIUS * 2, BALL_RADIUS * 2);
+
+    // 给球一个初始下落速度和微量水平随机
+    const vx = Phaser.Math.Between(-3, 3);
+    sprite.setVelocity(vx, 3);
 
     if (GameState.isSkillActive('slowdown')) {
-      sprite.setVelocity(sprite.body!.velocity.x * 0.5, sprite.body!.velocity.y * 0.5);
+      sprite.setVelocity(vx * 0.5, 1.5);
+    }
+
+    // 标记 body 为球，用于碰撞过滤
+    if (sprite.body) {
+      this.ballLabels.add(sprite.body as MatterJS.Body);
     }
 
     const text = this.add.text(x, y - 14, formatNum(value), {
-      fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '11px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '11px',
       color: golden ? '#ffd700' : '#ffffff', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(5);
 
     const ball: Ball = { sprite, text, value, source, golden, sageCopy: 0 };
     this.balls.push(ball);
-    this.ballsGroup.add(sprite);
   }
 
   private ballTextureFor(value: number, golden: boolean): string {
@@ -467,17 +497,26 @@ export class GameScene extends Phaser.Scene {
 
   private destroyBall(index: number) {
     const ball = this.balls[index];
-    this.ballsGroup.remove(ball.sprite, true, true);
+    ball.sprite.destroy();
     ball.text.destroy();
     this.balls.splice(index, 1);
   }
 
   // ===== 钉子 =====
-  private makePegSprite(x: number, y: number, texKey: string): Phaser.Physics.Arcade.Image {
-    // staticGroup.create 会自动创建 StaticBody 并正确定位
-    // 不调用 setCircle（矩形碰撞体最可靠），不改 displaySize
-    // texture 本身是 20x20，圆心在 (10,10) 半径 9，矩形碰撞体与视觉圆基本一致
-    const sprite = this.pegsGroup.create(x, y, texKey) as Phaser.Physics.Arcade.Image;
+  private makePegSprite(x: number, y: number, texKey: string, label: string): Phaser.Physics.Matter.Image {
+    // Matter 静态圆形钉子：isStatic=true 不受重力，restitution 弹力
+    const sprite = this.matter.add.image(x, y, texKey, undefined, {
+      shape: { type: 'circle', radius: PEG_RADIUS },
+      isStatic: true,
+      restitution: RESTITUTION,
+      friction: 0.01,
+      label,
+    });
+    sprite.setDisplaySize(PEG_RADIUS * 2, PEG_RADIUS * 2);
+    // 标记 body 为钉子，用于碰撞过滤
+    if (sprite.body) {
+      this.pegLabels.add(sprite.body as MatterJS.Body);
+    }
     return sprite;
   }
 
@@ -494,11 +533,11 @@ export class GameScene extends Phaser.Scene {
     else if (cfg.operator === 'addPercent') texKey = 'peg_chart';
     else if (cfg.operator === 'maxMul') texKey = 'peg_double';
 
-    const sprite = this.makePegSprite(x, y, texKey);
+    const sprite = this.makePegSprite(x, y, texKey, `peg:${peg.id}`);
 
     const label = this.pegLabel(cfg, peg);
     const text = this.add.text(x, y, label, {
-      fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '10px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '10px',
       color: '#ffffff', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5);
 
@@ -533,11 +572,11 @@ export class GameScene extends Phaser.Scene {
 
   private renderPlaceholder(gx: number, gy: number) {
     const { x, y } = this.gridToPixel(gx, gy);
-    const sprite = this.makePegSprite(x, y, 'peg_placeholder');
+    const sprite = this.makePegSprite(x, y, 'peg_placeholder', 'peg:placeholder');
     sprite.setAlpha(0.45);
 
     const text = this.add.text(x, y, '0', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '10px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '10px',
       color: '#7d8896', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0.6);
 
@@ -551,7 +590,6 @@ export class GameScene extends Phaser.Scene {
   private removePlaceholder(gx: number, gy: number) {
     const ps = this.placeholderPegs.get(this.placeholderKey(gx, gy));
     if (!ps) return;
-    this.pegsGroup.remove(ps.sprite, true, true);
     ps.sprite.destroy();
     ps.text.destroy();
     this.placeholderPegs.delete(this.placeholderKey(gx, gy));
@@ -571,7 +609,6 @@ export class GameScene extends Phaser.Scene {
     const ps = this.pegSprites.get(pegId);
     if (!ps) return;
     const gx = ps.gridX, gy = ps.gridY;
-    this.pegsGroup.remove(ps.sprite, true, true);
     ps.sprite.destroy();
     ps.text.destroy();
     this.pegSprites.delete(pegId);
@@ -623,7 +660,7 @@ export class GameScene extends Phaser.Scene {
   // ===== 视觉 =====
   private spawnFloatText(x: number, y: number, text: string, color: number) {
     const t = this.add.text(x, y, text, {
-      fontFamily: '"Alimama FangYuanTi VF Thin", "JetBrains Mono", monospace', fontSize: '12px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '12px',
       color: '#' + color.toString(16).padStart(6, '0'), stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5);
     this.tweens.add({ targets: t, y: y - 40, alpha: 0, duration: 700, onComplete: () => t.destroy() });
