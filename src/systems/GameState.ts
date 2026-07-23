@@ -30,12 +30,12 @@ export function formatNum(n: number): string {
     return n.toFixed(1);
   }
   // 字母表示：1e3=A, 1e6=B, ..., 1e78=Z, 1e81=AA, 1e84=AB...
+  // 大数会自动进位到 AQ, BR, CZA 等多字母组合
   let k = Math.floor(Math.log10(n) / 3);
   if (k < 1) k = 1;
-  if (k > 100) k = 100;
   let val = n / Math.pow(1000, k);
   while (val < 1 && k > 1) { val *= 1000; k--; }
-  while (val >= 1000 && k < 100) { val /= 1000; k++; }
+  while (val >= 1000) { val /= 1000; k++; }
   return val.toFixed(2) + suffix(k);
 }
 
@@ -44,10 +44,9 @@ export function shortNum(n: number): string {
   if (n < 1000) return String(Math.floor(n));
   let k = Math.floor(Math.log10(n) / 3);
   if (k < 1) k = 1;
-  if (k > 100) k = 100;
   let val = n / Math.pow(1000, k);
   while (val < 1 && k > 1) { val *= 1000; k--; }
-  while (val >= 1000 && k < 100) { val /= 1000; k++; }
+  while (val >= 1000) { val /= 1000; k++; }
   return val.toFixed(1) + suffix(k);
 }
 
