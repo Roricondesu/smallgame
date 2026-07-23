@@ -206,9 +206,20 @@ class GameStateClass {
       case '/':
         v = Math.max(1, Math.floor(v / cfg.operand));
         break;
-      case '^':
-        v = safeMul(v, v);
+      case '^': {
+        // 平方运算软上限：避免大数时指数爆炸到 Infinity 导致卡顿
+        // 当 v < 1e6 时正常平方；之后用对数缩放，效果衰减
+        if (v < 1e6) {
+          v = safeMul(v, v);
+        } else {
+          // log 域运算：v' = exp(2 * log(v) - penalty)
+          // 当 v 很大时，平方效果近似 +1e6 线性增量而非指数
+          const logV = Math.log(v);
+          const newLog = logV * 2 - Math.max(0, (logV - 14) * 0.5);
+          v = Math.min(MAX_NUMBER, Math.exp(Math.min(700, newLog)));
+        }
         break;
+      }
       case '%':
         break;
       case 'addPercent':
