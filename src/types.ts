@@ -1,71 +1,45 @@
-// 游戏类型定义
+// 全局类型定义
 
 export interface PegSave {
   id: string;
   typeId: string;
-  x: number; // grid x
-  y: number; // grid y
+  x: number;
+  y: number;
   level: number;
-}
-
-export interface AutoDropperSave {
-  id: string;
-  owned: boolean;
-}
-
-export interface SkillSave {
-  id: string;
-  level: number;
-}
-
-export interface CrystalShopSave {
-  id: string;
-  level: number;
-}
-
-export interface ActiveSkillState {
-  id: string;
-  readyAt: number; // 下次可用时间戳 ms
-  expiresAt: number; // 效果结束时间戳 ms
-}
-
-export interface GameStats {
-  totalBalls: number;
-  totalGold: number;
-  totalPegsPlaced: number;
-  highestGold: number;
-  highestBallValue: number;
-  manualClicks: number;
-  endings: Record<string, boolean>;
 }
 
 export interface SaveData {
   version: string;
   chapterId: number;
   gold: number;
+  totalGold: number;
   crystal: number;
   ballInitialValue: number;
   pegs: PegSave[];
-  autoDroppers: Record<string, boolean>;
-  skills: Record<string, number>; // 被动/自动技能等级
-  crystalShop: Record<string, number>;
-  activeStates: Record<string, ActiveSkillState>;
+  autoDroppers: string[];
+  skillLevels: Record<string, number>;
+  crystalUpgrades: Record<string, number>;
   storyProgress: string;
   lastSeen: number;
-  stats: GameStats;
-  pegCapacity: number;
+  stats: {
+    totalBalls: number;
+    totalPegsPlaced: number;
+    totalGoldEarned: number;
+    highestBallValue: number;
+  };
 }
 
-export interface PegType {
+export interface PegConfig {
   id: string;
   name: string;
-  operator: '+' | '*' | '/' | '^' | '%' | 'max' | 'chain';
+  operator: '+' | '*' | '/' | '^' | '%' | 'addPercent' | 'maxMul';
   operand: number;
-  growth: number; // 每级提升量
+  growth: number;
   baseCost: number;
-  costGrowth: number; // 价格增长倍率
-  unlockChapter: number;
+  costGrowth: number;
   color: number;
+  icon: import('./ui/icons').IconKey;
+  unlockChapter: number;
   desc: string;
   maxLevel: number;
 }
@@ -77,32 +51,22 @@ export interface SkillConfig {
   maxLevel: number;
   baseCost: number;
   costGrowth: number;
-  unlockChapter: number;
   effect: (level: number) => string;
-  apply: (state: SaveData, level: number) => void;
-  icon: string; // 对应 ui/icons.ts 的 IconKey
+  getValue?: (level: number) => number;
+  cooldown?: number;
+  duration?: number;
+  icon: import('./ui/icons').IconKey;
   desc: string;
-  cooldown?: number; // active 冷却秒数
-  duration?: number; // active 持续秒数
+  unlockChapter?: number;
 }
 
 export interface AutoDropperConfig {
   id: string;
   name: string;
-  interval: number; // 秒
+  interval: number;
   cost: number;
   unlockChapter: number;
-  icon: string;
-}
-
-export interface CrystalShopItem {
-  id: string;
-  name: string;
-  cost: number;
-  maxLevel: number;
-  effect: (level: number) => string;
-  apply: (state: SaveData, level: number) => void;
-  icon: string;
+  icon: import('./ui/icons').IconKey;
 }
 
 export interface ChapterConfig {
@@ -110,9 +74,36 @@ export interface ChapterConfig {
   name: string;
   scene: string;
   targetGold: number;
-  bg: string;
+  bg: number;
   accent: string;
-  unlockPegs: string[];
   storyIntro: string[];
   storyEnding: string[];
 }
+
+export interface CrystalUpgrade {
+  id: string;
+  name: string;
+  maxLevel: number;
+  baseCost: number;
+  costGrowth: number;
+  effect: (level: number) => string;
+  getValue: (level: number) => number;
+  icon: import('./ui/icons').IconKey;
+  desc: string;
+}
+
+export const BALANCE = {
+  gridCols: 12,
+  gridRows: 16,
+  cellSize: 42,
+  pegGridTopOffset: 96,
+  bottomSlots: 5,
+  gravityBase: 400,
+  maxBallsBase: 50,
+  offlineMaxHours: 8,
+  critChanceBase: 0.05,
+  goldMulBase: 1,
+  sellReturnRate: 0.5,
+  maxPegsBase: 10,
+  maxPegLevelBase: 10,
+} as const;
