@@ -102,13 +102,14 @@ export class MenuScene extends Phaser.Scene {
     const list = document.getElementById('menu-shop-list')!;
     list.innerHTML = '';
     for (const cfg of CRYSTAL_UPGRADES) {
-      const unlocked = cfg.unlockChapter <= GameState.chapterId;
+      // 章节未解锁：完全隐藏
+      if (cfg.unlockChapter > GameState.chapterId) continue;
       const lvl = GameState.getCrystalLevel(cfg.id);
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
       const afford = GameState.crystal >= cost;
       const maxed = lvl >= cfg.maxLevel;
       const el = document.createElement('div');
-      el.className = `shop-item ${(!unlocked || maxed) ? 'locked' : ''}`;
+      el.className = `shop-item ${maxed ? 'locked' : ''}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
@@ -117,10 +118,10 @@ export class MenuScene extends Phaser.Scene {
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">${cfg.effect(lvl)}</div>
-        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` :
-          `<div class="item-cost ${afford && !maxed ? 'afford' : 'cant'}">${svgIcon('crystal', 12)} ${formatNum(cost)}</div>`}
+        ${maxed ? `<div class="item-cost cant">已满级</div>` :
+          `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('crystal', 12)} ${formatNum(cost)}</div>`}
       `;
-      if (unlocked && !maxed) {
+      if (!maxed) {
         el.addEventListener('click', () => {
           GameState.buyCrystalUpgrade(cfg.id);
           this.showCrystalShop();
