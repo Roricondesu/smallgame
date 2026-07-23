@@ -5,7 +5,7 @@ import { bus, EVT } from './EventBus';
 import { PEG_MAP } from '../data/pegs';
 import { SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
 import { CHAPTERS, CHAPTER_MAP, AUTO_MAP, CRYSTAL_MAP } from '../data/chapters';
-import type { SaveData, PegSave } from '../types';
+import type { SaveData, PegSave, AutoDropperSave } from '../types';
 import { BALANCE } from '../types';
 
 const MAX_NUMBER = 1e308;
@@ -79,7 +79,6 @@ class GameStateClass {
   private combo = 0;
   private comboTimer = 0;
 
-  // 只读访问
   get save() { return this._save; }
   get chapterId() { return this._save.chapterId; }
   get chapter() { return CHAPTER_MAP[this._save.chapterId] ?? CHAPTERS[0]; }
@@ -90,9 +89,7 @@ class GameStateClass {
   get autoDroppers() { return this._save.autoDroppers; }
   get storyProgress() { return this._save.storyProgress; }
 
-  init() {
-    // 上线时先触发离线收益，由 OfflineReportScene 处理
-  }
+  init() {}
 
   saveGame() {
     SaveSystem.save(this._save);
@@ -125,11 +122,9 @@ class GameStateClass {
     const cfg = PEG_MAP[typeId];
     if (!cfg || cfg.unlockChapter > this._save.chapterId) return null;
 
-    // 检查同格是否已有钉子
     const existing = this._save.pegs.find((p) => p.x === gx && p.y === gy);
     if (existing) return null;
 
-    // 检查上限
     const maxPegs = BALANCE.maxPegsBase + this.getSkillLevel('capacityPegs') * 3;
     if (this._save.pegs.length >= maxPegs) {
       bus.emit(EVT.TOAST, '钉子数量已达上限');
@@ -145,10 +140,7 @@ class GameStateClass {
 
     const peg: PegSave = {
       id: `${typeId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      typeId,
-      x: gx,
-      y: gy,
-      level: 1,
+      typeId, x: gx, y: gy, level: 1,
     };
     this._save.pegs.push(peg);
     this._save.stats.totalPegsPlaced++;
@@ -218,7 +210,6 @@ class GameStateClass {
         v = safeMul(v, v);
         break;
       case '%':
-        // 贤者钉：复制，不在此处运算，由场景处理
         break;
       case 'addPercent':
         v = safeAdd(v, v * (cfg.operand + (peg.level - 1) * cfg.growth));
@@ -232,7 +223,6 @@ class GameStateClass {
 
     v = safeMul(v, goldenMul);
 
-    // 金币加成
     const goldMul = BALANCE.goldMulBase + this.getSkillLevel('goldBonus') * 0.05 + this.getCrystalLevel('goldBonus') * 0.02;
     if (goldMul > 1) v = safeMul(v, goldMul);
 
@@ -244,11 +234,17 @@ class GameStateClass {
     return this._save.skillLevels[id] || 0;
   }
 
+  isSkillUnlocked(id: string): boolean {
+    const cfg = SKILL_MAP[id];
+    if (!cfg) return false;
+    return cfg.unlockChapter <= this._save.chapterId;
+  }
+
   buySkill(id: string): boolean {
     const cfg = SKILL_MAP[id];
     if (!cfg) return false;
-    if (cfg.unlockChapter && cfg.unlockChapter > this._save.chapterId) {
-      bus.emit(EVT.TOAST, '当前周目未解锁');
+    if (cfg.unlockChapter > this._save.chapterId) {
+      bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
       return false;
     }
     const lvl = this.getSkillLevel(id);
@@ -308,32 +304,81 @@ class GameStateClass {
     this.actives.checkExpired(now);
   }
 
-  // ===== 自动器 =====
+  // ===== 自动器（可多买 + 速度升级） =====
+  getAutoDropperInfo(id: string): AutoDropperSave {
+    return this._save.autoDroppers[id] || { count: 0, speedLevel: 0 };
+  }
+
+  getAutoDropperCost(id: string): number {
+    const cfg = AUTO_MAP[id];
+    if (!cfg) return Infinity;
+    const info = this.getAutoDropperInfo(id);
+    return Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, info.count));
+  }
+
+  getAutoDropperSpeedUpgradeCost(id: string): number {
+    const cfg = AUTO_MAP[id];
+    if (!cfg) return Infinity;
+    const info = this.getAutoDropperInfo(id);
+    return Math.floor(cfg.speedUpgradeCost * Math.pow(cfg.speedUpgradeGrowth, info.speedLevel));
+  }
+
   buyAutoDropper(id: string): boolean {
     const cfg = AUTO_MAP[id];
     if (!cfg) return false;
     if (cfg.unlockChapter > this._save.chapterId) {
-      bus.emit(EVT.TOAST, '当前周目未解锁');
+      bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
       return false;
     }
-    if (this._save.autoDroppers.includes(id)) {
-      bus.emit(EVT.TOAST, '已拥有该自动器');
+    const info = this.getAutoDropperInfo(id);
+    if (info.count >= cfg.maxCount) {
+      bus.emit(EVT.TOAST, '已达最大购买数量');
       return false;
     }
-    if (!this.spendGold(cfg.cost)) {
+    const cost = this.getAutoDropperCost(id);
+    if (!this.spendGold(cost)) {
       bus.emit(EVT.TOAST, '金币不足');
       return false;
     }
-    this._save.autoDroppers.push(id);
+    if (!this._save.autoDroppers[id]) {
+      this._save.autoDroppers[id] = { count: 0, speedLevel: 0 };
+    }
+    this._save.autoDroppers[id].count++;
+    bus.emit(EVT.AUTO_BOUGHT, id);
+    return true;
+  }
+
+  upgradeAutoDropperSpeed(id: string): boolean {
+    const cfg = AUTO_MAP[id];
+    if (!cfg) return false;
+    const info = this.getAutoDropperInfo(id);
+    if (info.count <= 0) {
+      bus.emit(EVT.TOAST, '请先购买该自动器');
+      return false;
+    }
+    if (info.speedLevel >= cfg.maxSpeedLevel) {
+      bus.emit(EVT.TOAST, '速度已达上限');
+      return false;
+    }
+    const cost = this.getAutoDropperSpeedUpgradeCost(id);
+    if (!this.spendGold(cost)) {
+      bus.emit(EVT.TOAST, '金币不足');
+      return false;
+    }
+    this._save.autoDroppers[id].speedLevel++;
     bus.emit(EVT.AUTO_BOUGHT, id);
     return true;
   }
 
   getAutoDropRate(): number {
     let rate = 0;
-    for (const id of this._save.autoDroppers) {
+    for (const [id, info] of Object.entries(this._save.autoDroppers)) {
       const cfg = AUTO_MAP[id];
-      if (cfg) rate += 1 / cfg.interval;
+      if (!cfg || info.count <= 0) continue;
+      const speedMul = Math.max(0.1, 1 - info.speedLevel * cfg.speedPerLevel);
+      const interval = cfg.interval * speedMul;
+      const count = cfg.id === 'multi' ? info.count * 2 : info.count;
+      rate += count / interval;
     }
     return rate;
   }
@@ -343,9 +388,19 @@ class GameStateClass {
     return this._save.crystalUpgrades[id] || 0;
   }
 
+  isCrystalUnlocked(id: string): boolean {
+    const cfg = CRYSTAL_MAP[id];
+    if (!cfg) return false;
+    return cfg.unlockChapter <= this._save.chapterId;
+  }
+
   buyCrystalUpgrade(id: string): boolean {
     const cfg = CRYSTAL_MAP[id];
     if (!cfg) return false;
+    if (cfg.unlockChapter > this._save.chapterId) {
+      bus.emit(EVT.TOAST, `第 ${cfg.unlockChapter} 章解锁`);
+      return false;
+    }
     const lvl = this.getCrystalLevel(id);
     if (lvl >= cfg.maxLevel) return false;
     const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
@@ -363,7 +418,6 @@ class GameStateClass {
   checkChapterGoal() {
     const ch = this.chapter;
     if (this._save.totalGold >= ch.targetGold && !this._save.storyProgress.endsWith('_ending')) {
-      // 到达周目5目标后触发结局抉择
       if (this._save.chapterId >= 5 && this._save.gold >= 1e15 && !this._save.storyProgress.includes('choosing')) {
         this._save.storyProgress = 'ch5_choosing';
         bus.emit(EVT.ENDING_CHOICE);
@@ -374,17 +428,18 @@ class GameStateClass {
   }
 
   prestige(nextChapter: number) {
-    const crystalGain = Math.floor(this._save.totalGold / 1e6);
+    const crystalGainMul = 1 + this.getCrystalLevel('crystalGain') * 0.05;
+    const crystalGain = Math.floor(this._save.totalGold / 1e6 * crystalGainMul);
     this._save.crystal = safeAdd(this._save.crystal, Math.max(1, crystalGain));
     this._save.chapterId = Math.min(5, nextChapter);
-    this._save.gold = 0;
+    this._save.gold = this.getCrystalLevel('startGold') * 1000;
     this._save.totalGold = 0;
     this._save.pegs = [];
-    this._save.autoDroppers = [];
+    this._save.autoDroppers = {};
     this._save.skillLevels = {};
     this._save.ballInitialValue = 1;
     this._save.storyProgress = `ch${this._save.chapterId}_intro`;
-    bus.emit(EVT.GOLD_CHANGED, 0);
+    bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     bus.emit(EVT.CRYSTAL_CHANGED, this._save.crystal);
     bus.emit(EVT.BALL_VALUE_CHANGED, 1);
     bus.emit(EVT.CHAPTER_CHANGED, this._save.chapterId);

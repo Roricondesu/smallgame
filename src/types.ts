@@ -8,6 +8,12 @@ export interface PegSave {
   level: number;
 }
 
+/** 自动器存档：id -> { count: 拥有数量, speedLevel: 速度升级等级 } */
+export interface AutoDropperSave {
+  count: number;
+  speedLevel: number;
+}
+
 export interface SaveData {
   version: string;
   chapterId: number;
@@ -16,7 +22,7 @@ export interface SaveData {
   crystal: number;
   ballInitialValue: number;
   pegs: PegSave[];
-  autoDroppers: string[];
+  autoDroppers: Record<string, AutoDropperSave>;
   skillLevels: Record<string, number>;
   crystalUpgrades: Record<string, number>;
   storyProgress: string;
@@ -57,16 +63,23 @@ export interface SkillConfig {
   duration?: number;
   icon: import('./ui/icons').IconKey;
   desc: string;
-  unlockChapter?: number;
+  unlockChapter: number;
 }
 
 export interface AutoDropperConfig {
   id: string;
   name: string;
   interval: number;
-  cost: number;
+  baseCost: number;
+  costGrowth: number;
+  speedUpgradeCost: number;
+  speedUpgradeGrowth: number;
+  speedPerLevel: number;
+  maxSpeedLevel: number;
+  maxCount: number;
   unlockChapter: number;
   icon: import('./ui/icons').IconKey;
+  desc: string;
 }
 
 export interface ChapterConfig {
@@ -90,6 +103,7 @@ export interface CrystalUpgrade {
   getValue: (level: number) => number;
   icon: import('./ui/icons').IconKey;
   desc: string;
+  unlockChapter: number;
 }
 
 export const BALANCE = {

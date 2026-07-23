@@ -32,6 +32,7 @@ export class HUD {
     this.injectIcons();
     this.bindHeader();
     this.bindShopTabs();
+    this.bindPanelToggles();
     this.renderShop();
     this.renderSkills();
     this.renderActives();
@@ -51,6 +52,7 @@ export class HUD {
       'icon-chapter': 'chapter', 'icon-menu': 'menu', 'icon-pegs': 'pegs',
       'icon-skills': 'skills', 'icon-prestige': 'prestige', 'icon-ending': 'ending',
       'icon-save': 'save', 'icon-save2': 'save', 'icon-home': 'home', 'icon-trash': 'trash',
+      'icon-pegs-dup': 'pegs', 'icon-skills-dup': 'skills',
     };
     for (const [id, key] of Object.entries(map)) {
       const el = document.getElementById(id);
@@ -61,6 +63,33 @@ export class HUD {
   private bindHeader() {
     document.getElementById('btn-menu')!.addEventListener('click', () => {
       document.getElementById('modal-menu')!.classList.add('open');
+    });
+  }
+
+  private bindPanelToggles() {
+    const shopBtn = document.getElementById('toggle-shop');
+    const skillBtn = document.getElementById('toggle-skill');
+    const leftPanel = document.getElementById('left-panel');
+    const rightPanel = document.getElementById('right-panel');
+    shopBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      leftPanel?.classList.toggle('open');
+      rightPanel?.classList.remove('open');
+    });
+    skillBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      rightPanel?.classList.toggle('open');
+      leftPanel?.classList.remove('open');
+    });
+    // 点击空白处收起移动端面板
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#left-panel') && !target.closest('#toggle-shop') && !target.closest('.shop-item')) {
+        if (window.innerWidth <= 640) leftPanel?.classList.remove('open');
+      }
+      if (!target.closest('#right-panel') && !target.closest('#toggle-skill') && !target.closest('.skill-item')) {
+        if (window.innerWidth <= 640) rightPanel?.classList.remove('open');
+      }
     });
   }
 
@@ -170,14 +199,15 @@ export class HUD {
 
       const el = document.createElement('div');
       el.className = `shop-item ${unlocked ? '' : 'locked'}`;
-      if (selected) el.style.borderColor = '#f0b429';
+      if (selected) el.style.borderColor = '#f5c542';
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon peg-icon" style="border-color:#${cfg.color.toString(16).padStart(6,'0')}">${operatorIcon(cfg.operator, 16, '#'+cfg.color.toString(16).padStart(6,'0'))}</div>
           <div class="item-name">${cfg.name}</div>
         </div>
         <div class="item-desc">${cfg.desc}</div>
-        <div class="item-cost ${afford && unlocked ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>
+        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` :
+          `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`}
       `;
       if (unlocked) {
         el.addEventListener('click', () => {
@@ -193,22 +223,43 @@ export class HUD {
   private renderAutoShop(list: HTMLElement) {
     for (const cfg of AUTO_DROPPERS) {
       const unlocked = cfg.unlockChapter <= GameState.chapterId;
-      const owned = GameState.autoDroppers.includes(cfg.id);
-      const afford = GameState.gold >= cfg.cost;
+      const info = GameState.getAutoDropperInfo(cfg.id);
+      const buyCost = GameState.getAutoDropperCost(cfg.id);
+      const speedCost = GameState.getAutoDropperSpeedUpgradeCost(cfg.id);
+      const canBuy = unlocked && info.count < cfg.maxCount && GameState.gold >= buyCost;
+      const canSpeed = unlocked && info.count > 0 && info.speedLevel < cfg.maxSpeedLevel && GameState.gold >= speedCost;
+      const buyMaxed = info.count >= cfg.maxCount;
+      const speedMaxed = info.speedLevel >= cfg.maxSpeedLevel;
+      const currentInterval = cfg.interval * Math.max(0.1, 1 - info.speedLevel * cfg.speedPerLevel);
+
       const el = document.createElement('div');
-      el.className = `shop-item ${unlocked && !owned ? '' : 'locked'}`;
+      el.className = `shop-item ${unlocked ? '' : 'locked'}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
           <div class="item-name">${cfg.name}</div>
-          ${owned ? '<div class="item-level">已拥有</div>' : ''}
+          <div class="item-level">×${info.count}/${cfg.maxCount}</div>
         </div>
-        <div class="item-desc">每 ${cfg.interval}s 自动投 1 颗弹珠</div>
-        <div class="item-cost ${afford && unlocked && !owned ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cfg.cost)}</div>
+        <div class="item-desc">${cfg.desc}</div>
+        <div class="item-effect">间隔 ${currentInterval.toFixed(2)}s · 速度 Lv.${info.speedLevel}/${cfg.maxSpeedLevel}</div>
+        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` : `
+        <div class="item-actions">
+          <button class="mini-btn ${buyMaxed ? 'maxed' : (canBuy ? 'afford' : 'cant')}" data-act="buy" ${buyMaxed ? 'disabled' : ''}>
+            ${buyMaxed ? '已满' : `${svgIcon('gold', 11)} 买 ${formatNum(buyCost)}`}
+          </button>
+          <button class="mini-btn speed ${speedMaxed ? 'maxed' : (canSpeed ? 'afford' : 'cant')}" data-act="speed" ${speedMaxed || info.count === 0 ? 'disabled' : ''}>
+            ${speedMaxed ? '满速' : `${svgIcon('gold', 11)} 升 ${formatNum(speedCost)}`}
+          </button>
+        </div>`}
       `;
-      if (unlocked && !owned) {
-        el.addEventListener('click', () => {
-          GameState.buyAutoDropper(cfg.id);
+      if (unlocked) {
+        el.querySelector('[data-act="buy"]')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (GameState.buyAutoDropper(cfg.id)) this.renderShop();
+        });
+        el.querySelector('[data-act="speed"]')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (GameState.upgradeAutoDropperSpeed(cfg.id)) this.renderShop();
         });
       }
       list.appendChild(el);
@@ -217,12 +268,13 @@ export class HUD {
 
   private renderGlobalShop(list: HTMLElement) {
     for (const cfg of CRYSTAL_UPGRADES) {
+      const unlocked = cfg.unlockChapter <= GameState.chapterId;
       const lvl = GameState.getCrystalLevel(cfg.id);
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
       const afford = GameState.crystal >= cost;
       const maxed = lvl >= cfg.maxLevel;
       const el = document.createElement('div');
-      el.className = `shop-item ${maxed ? 'locked' : ''}`;
+      el.className = `shop-item ${(!unlocked || maxed) ? 'locked' : ''}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
@@ -231,9 +283,10 @@ export class HUD {
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">${cfg.effect(lvl)}</div>
-        <div class="item-cost ${afford && !maxed ? 'afford' : 'cant'}">${svgIcon('crystal', 12)} ${formatNum(cost)}</div>
+        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` :
+          `<div class="item-cost ${afford && !maxed ? 'afford' : 'cant'}">${svgIcon('crystal', 12)} ${formatNum(cost)}</div>`}
       `;
-      if (!maxed) {
+      if (unlocked && !maxed) {
         el.addEventListener('click', () => {
           GameState.buyCrystalUpgrade(cfg.id);
           this.updateHeader();
@@ -249,13 +302,13 @@ export class HUD {
     list.innerHTML = '';
     for (const cfg of SKILLS) {
       if (cfg.category === 'active') continue;
-      const unlocked = (cfg.unlockChapter ?? 1) <= GameState.chapterId;
+      const unlocked = cfg.unlockChapter <= GameState.chapterId;
       const lvl = GameState.getSkillLevel(cfg.id);
       const maxed = lvl >= cfg.maxLevel;
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
       const afford = GameState.gold >= cost;
       const el = document.createElement('div');
-      el.className = `skill-item ${unlocked && !maxed ? '' : 'locked'}`;
+      el.className = `skill-item ${(!unlocked || maxed) ? 'locked' : ''}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
@@ -264,7 +317,8 @@ export class HUD {
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">${cfg.effect(lvl)}</div>
-        <div class="item-cost ${afford && unlocked && !maxed ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>
+        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` :
+          `<div class="item-cost ${afford && !maxed ? 'afford' : 'cant'}">${svgIcon('gold', 12)} ${formatNum(cost)}</div>`}
       `;
       if (unlocked && !maxed) {
         el.addEventListener('click', () => {

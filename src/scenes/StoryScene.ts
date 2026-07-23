@@ -36,15 +36,15 @@ export class StoryScene extends Phaser.Scene {
     bg.setDepth(-1);
 
     this.add.text(W / 2, H * 0.16, `第 ${this.chapterId} 章 · ${ch.name}`, {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '18px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
+      fontSize: `${Math.min(24, Math.max(16, W * 0.028))}px`,
       color: ch.accent,
       align: 'center',
     }).setOrigin(0.5);
 
     this.add.text(W / 2, H * 0.24, ch.scene, {
-      fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '13px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
+      fontSize: `${Math.min(15, Math.max(11, W * 0.018))}px`,
       color: '#768390',
     }).setOrigin(0.5);
 
@@ -86,7 +86,7 @@ export class StoryScene extends Phaser.Scene {
     this.add.rectangle(W / 2, H * 0.55, W * 0.82, 240, 0x000000, 0.55)
       .setStrokeStyle(1, 0x30363d);
     this.text = this.add.text(W / 2, H * 0.55, '', {
-      fontFamily: 'JetBrains Mono, monospace',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
       fontSize: '15px',
       color: '#e6edf3',
       align: 'left',
@@ -95,8 +95,8 @@ export class StoryScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.contHint = this.add.text(W / 2, H * 0.78, '点击 / 空格 继续', {
-      fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '11px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
+      fontSize: '12px',
       color: '#768390',
     }).setOrigin(0.5);
 

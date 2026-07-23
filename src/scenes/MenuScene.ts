@@ -25,23 +25,23 @@ export class MenuScene extends Phaser.Scene {
     bg.setDepth(-1);
 
     this.add.text(W / 2, H * 0.18, '弹珠炼金术', {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '36px',
-      color: '#f0b429',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
+      fontSize: `${Math.min(56, Math.max(32, W * 0.07))}px`,
+      color: '#ffffff',
       align: 'center',
-    }).setOrigin(0.5).setShadow(0, 4, '#000', 8);
+    }).setOrigin(0.5).setShadow(0, 2, 'rgba(0,0,0,0.6)', 6);
 
-    this.add.text(W / 2, H * 0.28, 'Pinball Alchemy', {
-      fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '14px',
-      color: '#768390',
+    this.add.text(W / 2, H * 0.30, 'Pinball Alchemy', {
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
+      fontSize: `${Math.min(20, Math.max(12, W * 0.022))}px`,
+      color: '#f5c542',
     }).setOrigin(0.5);
 
     // 资源信息
-    this.add.text(W / 2, H * 0.38, `数晶 ${formatNum(GameState.crystal)}`, {
-      fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '16px',
-      color: '#2db7a3',
+    this.add.text(W / 2, H * 0.40, `数晶 ${formatNum(GameState.crystal)}`, {
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
+      fontSize: `${Math.min(20, Math.max(14, W * 0.022))}px`,
+      color: '#4dd6c1',
     }).setOrigin(0.5);
 
     const hasSave = GameState.save.stats.totalBalls > 0 || GameState.pegs.length > 0 || GameState.gold > 0;
@@ -63,21 +63,21 @@ export class MenuScene extends Phaser.Scene {
       }
     }, true);
 
-    this.add.text(W / 2, H - 20, 'v0.1.0 · 像素风物理弹珠挂机', {
-      fontFamily: 'JetBrains Mono, monospace',
+    this.add.text(W / 2, H - 20, 'v1.2.0 · 像素风物理弹珠挂机', {
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
       fontSize: '11px',
       color: '#484f58',
     }).setOrigin(0.5);
   }
 
   private makeBtn(x: number, y: number, label: string, onClick: () => void, danger = false) {
-    const w = 220, h = 44;
+    const w = Math.min(260, this.scale.width * 0.6), h = 44;
     const rect = this.add.rectangle(x, y, w, h, danger ? 0x1c2330 : 0x21262d, 1)
       .setStrokeStyle(1, danger ? 0xf85149 : 0x484f58);
     rect.setInteractive();
     this.add.text(x, y, label, {
-      fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '14px',
+      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
+      fontSize: '15px',
       color: danger ? '#f85149' : '#e6edf3',
     }).setOrigin(0.5);
     rect.on('pointerover', () => rect.setFillStyle(danger ? 0x2d1b1b : 0x30363d));
@@ -106,12 +106,13 @@ export class MenuScene extends Phaser.Scene {
     const list = document.getElementById('menu-shop-list')!;
     list.innerHTML = '';
     for (const cfg of CRYSTAL_UPGRADES) {
+      const unlocked = cfg.unlockChapter <= GameState.chapterId;
       const lvl = GameState.getCrystalLevel(cfg.id);
       const cost = Math.floor(cfg.baseCost * Math.pow(cfg.costGrowth, lvl));
       const afford = GameState.crystal >= cost;
       const maxed = lvl >= cfg.maxLevel;
       const el = document.createElement('div');
-      el.className = `shop-item ${maxed ? 'locked' : ''}`;
+      el.className = `shop-item ${(!unlocked || maxed) ? 'locked' : ''}`;
       el.innerHTML = `
         <div class="item-head">
           <div class="item-icon">${svgIcon(cfg.icon as IconKey, 16)}</div>
@@ -120,9 +121,10 @@ export class MenuScene extends Phaser.Scene {
         </div>
         <div class="item-desc">${cfg.desc}</div>
         <div class="item-effect">${cfg.effect(lvl)}</div>
-        <div class="item-cost ${afford && !maxed ? 'afford' : 'cant'}">${svgIcon('crystal', 12)} ${formatNum(cost)}</div>
+        ${!unlocked ? `<div class="item-cost cant">第 ${cfg.unlockChapter} 章解锁</div>` :
+          `<div class="item-cost ${afford && !maxed ? 'afford' : 'cant'}">${svgIcon('crystal', 12)} ${formatNum(cost)}</div>`}
       `;
-      if (!maxed) {
+      if (unlocked && !maxed) {
         el.addEventListener('click', () => {
           GameState.buyCrystalUpgrade(cfg.id);
           this.showCrystalShop();

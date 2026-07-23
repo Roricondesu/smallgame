@@ -1,11 +1,11 @@
 // 存档系统：LocalStorage 读写、版本迁移、离线收益计算
 
-import type { SaveData } from '../types';
+import type { SaveData, AutoDropperSave } from '../types';
 import { BALANCE } from '../types';
-import { AUTO_DROPPERS } from '../data/chapters';
+import { AUTO_MAP } from '../data/chapters';
 
 const SAVE_KEY = 'pinball_alchemy_save_v1';
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 export const DEFAULT_SAVE: SaveData = {
   version: VERSION,
@@ -15,7 +15,7 @@ export const DEFAULT_SAVE: SaveData = {
   crystal: 0,
   ballInitialValue: 1,
   pegs: [],
-  autoDroppers: [],
+  autoDroppers: {},
   skillLevels: {},
   crystalUpgrades: {},
   storyProgress: 'ch1_intro',
@@ -57,11 +57,24 @@ export class SaveSystem {
   }
 
   static migrate(data: Partial<SaveData>): SaveData {
-    const merged: SaveData = { ...DEFAULT_SAVE, ...data, stats: { ...DEFAULT_SAVE.stats, ...data.stats } };
-    // 版本迁移：未来版本在此处处理字段变更
+    const merged: SaveData = {
+      ...DEFAULT_SAVE,
+      ...data,
+      stats: { ...DEFAULT_SAVE.stats, ...(data.stats || {}) },
+    };
     merged.version = VERSION;
     if (!merged.pegs) merged.pegs = [];
-    if (!merged.autoDroppers) merged.autoDroppers = [];
+
+    // 迁移旧版 autoDroppers（string[] -> Record<string, AutoDropperSave>）
+    if (Array.isArray(merged.autoDroppers)) {
+      const old: string[] = merged.autoDroppers as unknown as string[];
+      const migrated: Record<string, AutoDropperSave> = {};
+      for (const id of old) migrated[id] = { count: 1, speedLevel: 0 };
+      merged.autoDroppers = migrated;
+    } else if (!merged.autoDroppers) {
+      merged.autoDroppers = {};
+    }
+
     if (!merged.skillLevels) merged.skillLevels = {};
     if (!merged.crystalUpgrades) merged.crystalUpgrades = {};
     return merged;
@@ -70,16 +83,22 @@ export class SaveSystem {
   // 离线收益：基于已购买自动器的投放效率估算
   static calculateOffline(data: SaveData): { gold: number; seconds: number } {
     const now = Date.now();
-    const maxSeconds = (BALANCE.offlineMaxHours + (data.skillLevels?.offlineMax || 0) * 3600) * 3600;
+    const maxHours = BALANCE.offlineMaxHours + (data.skillLevels?.offlineMax || 0);
+    const maxSeconds = maxHours * 3600;
     const diff = Math.max(0, Math.min((now - data.lastSeen) / 1000, maxSeconds));
-    if (diff <= 0 || data.autoDroppers.length === 0) return { gold: 0, seconds: 0 };
+    if (diff <= 0) return { gold: 0, seconds: 0 };
 
-    let rate = 0; // 每秒投放弹珠数
-    for (const id of data.autoDroppers) {
-      const cfg = AUTO_DROPPERS.find((a) => a.id === id);
-      if (cfg) rate += 1 / cfg.interval;
+    let rate = 0;
+    for (const [id, info] of Object.entries(data.autoDroppers)) {
+      const cfg = AUTO_MAP[id];
+      if (!cfg || info.count <= 0) continue;
+      const speedMul = 1 - info.speedLevel * cfg.speedPerLevel;
+      const interval = cfg.interval * Math.max(0.1, speedMul);
+      const count = cfg.id === 'multi' ? info.count * 2 : info.count;
+      rate += count / interval;
     }
-    // 假设每颗弹珠平均收益为当前初始值的 100 倍（粗略估算）
+    if (rate <= 0) return { gold: 0, seconds: 0 };
+
     const avgValue = Math.max(1, data.ballInitialValue * 100);
     const gold = diff * rate * avgValue * 0.5;
     return { gold: Math.floor(gold), seconds: diff };
