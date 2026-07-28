@@ -254,7 +254,7 @@ export class GameScene extends Phaser.Scene {
         this.matter.world.engine.timing.timeScale = 1;
       }
     });
-    bus.on(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleSelector?.());
+    bus.on(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleCodex?.());
     bus.on(EVT.PRESTIGE_AVAILABLE, () => {
       // 各章首次达到归零条件时，播放对应归零剧情对话
       this.tryPlayDialogue(chapterPrestigeReadyId(GameState.chapterId));

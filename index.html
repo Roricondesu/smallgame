@@ -564,96 +564,6 @@
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
     #toast svg { width: 14px; height: 14px; flex-shrink: 0; }
 
-    /* ===== 元素弹珠选择器（左下角悬浮） ===== */
-    #marble-selector.marble-selector {
-      position: fixed;
-      bottom: max(16px, env(safe-area-inset-bottom));
-      left: 12px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 8px 10px 10px;
-      pointer-events: auto;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow: var(--shadow-sm);
-      z-index: 12;
-      max-width: 220px;
-    }
-    .marble-selector-title {
-      font-size: 10px; color: var(--muted);
-      letter-spacing: 1px; text-transform: uppercase;
-      margin-bottom: 6px; padding-left: 2px;
-    }
-    .marble-list {
-      display: flex; flex-wrap: wrap; gap: 4px;
-    }
-    .marble-cell {
-      width: 36px; height: 36px;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.15s;
-      flex-direction: column;
-    }
-    .marble-cell:hover { background: rgba(255, 255, 255, 0.08); }
-    .marble-cell img {
-      width: 22px; height: 22px;
-      image-rendering: pixelated;
-    }
-    .marble-cell .marble-count {
-      position: absolute;
-      bottom: -3px; right: -3px;
-      background: var(--panel-solid);
-      border: 1px solid var(--border-strong);
-      color: var(--text);
-      font-size: 9px;
-      font-weight: 600;
-      padding: 1px 4px;
-      border-radius: 6px;
-      line-height: 1.2;
-    }
-    .marble-cell.selected {
-      border-color: var(--gold);
-      box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.3);
-    }
-    .marble-cell.empty {
-      opacity: 0.35;
-      cursor: not-allowed;
-      filter: grayscale(0.8);
-    }
-    .marble-cell.normal {
-      border-style: dashed;
-      background: transparent;
-    }
-    .marble-cell.normal.selected {
-      border-color: var(--text);
-      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
-    }
-    /* 颜色斑点（无图标的普通弹珠用） */
-    .marble-cell .marble-dot {
-      width: 16px; height: 16px;
-      border-radius: 50%;
-      background: var(--muted);
-    }
-    .marble-cell.normal .marble-dot { background: #8b949e; }
-
-    /* 移动端：弹珠选择器更紧凑 */
-    @media (max-width: 640px) {
-      #marble-selector.marble-selector {
-        left: 8px;
-        right: 8px;
-        max-width: none;
-        padding: 6px 8px 8px;
-      }
-      .marble-selector-title { font-size: 9px; }
-      .marble-cell { width: 34px; height: 34px; }
-      .marble-cell img { width: 20px; height: 20px; }
-    }
-
     /* ===== 对话覆盖层 ===== */
     .dialogue-overlay {
       position: fixed;
@@ -758,15 +668,15 @@
     }
     .marble-codex-icon {
       width: 36px; height: 36px;
-      border-radius: 8px;
+      border-radius: 50%;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border);
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
-    .marble-codex-icon img {
-      width: 24px; height: 24px;
-      image-rendering: pixelated;
+    .marble-ball {
+      width: 22px; height: 22px;
+      border-radius: 50%;
     }
     .marble-codex-body { flex: 1; min-width: 0; }
     .marble-codex-name {
@@ -1203,12 +1113,6 @@
         </div>
         <div id="shop-list"></div>
       </div>
-    </div>
-
-    <!-- 元素弹珠选择器（左下角悬浮） -->
-    <div id="marble-selector" class="marble-selector">
-      <div class="marble-selector-title">元素弹珠</div>
-      <div id="marble-list" class="marble-list"></div>
     </div>
 
     <div id="toast"></div>
