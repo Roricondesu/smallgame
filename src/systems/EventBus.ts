@@ -18,6 +18,7 @@ export const EVT = {
   MARBLE_SELECTED: 'marble_selected',
   MARBLE_USED: 'marble_used',
   DIALOGUE_TRIGGER: 'dialogue_trigger',
+  MILESTONE_REACHED: 'milestone_reached',
 } as const;
 
 type EventCallback = (...args: unknown[]) => void;

@@ -7,12 +7,35 @@ import { bus, EVT } from './EventBus';
 import { DIALOGUE_MAP } from '../data/dialogues';
 import type { Dialogue, DialogueLine } from '../data/dialogues';
 
+/** 角色名映射 */
+const SPEAKER_NAMES: Record<string, string> = {
+  linn: '林恩',
+  zero: '零号',
+  lily: '莉莉',
+  vera: '薇拉',
+  boss_skull: '骷髅守卫',
+  boss_ghost: '熵之幻影',
+  boss_chameleon: '幻彩守卫',
+};
+
+/** 立绘文件映射 */
+const PORTRAIT_FILES: Record<string, string> = {
+  linn: 'linn.png',
+  zero: 'zero.png',
+  lily: 'lily.png',
+  vera: 'vera.png',
+  boss_skull: 'boss_skull.png',
+  boss_ghost: 'boss_ghost.png',
+  boss_chameleon: 'boss_chameleon.png',
+};
+
 export class DialogueSystem {
   private root: HTMLElement | null = null;
   private current: Dialogue | null = null;
   private lineIdx = 0;
   private onDone?: () => void;
   private bound = false;
+  private triggerCb?: (...args: unknown[]) => void;
 
   /** 挂载 DOM 节点（首次创建） */
   private ensureRoot() {
@@ -46,18 +69,26 @@ export class DialogueSystem {
     if (this.bound) return;
     this.bound = true;
     this.ensureRoot();
-    bus.on(EVT.DIALOGUE_TRIGGER, (id: unknown) => {
+    this.triggerCb = (id: unknown) => {
       const dlg = DIALOGUE_MAP[String(id)];
       if (dlg) this.start(dlg);
-    });
+    };
+    bus.on(EVT.DIALOGUE_TRIGGER, this.triggerCb);
   }
 
   unmount() {
+    if (this.triggerCb) {
+      bus.off(EVT.DIALOGUE_TRIGGER, this.triggerCb);
+      this.triggerCb = undefined;
+    }
     if (this.root) {
       this.root.classList.remove('open');
+      this.root.remove();
+      this.root = null;
     }
     this.current = null;
     this.lineIdx = 0;
+    this.bound = false;
   }
 
   /** 启动一段对话 */
@@ -100,21 +131,15 @@ export class DialogueSystem {
     const textEl = this.root.querySelector('#dialogue-text') as HTMLElement;
     const portraitEl = this.root.querySelector('#dialogue-portrait') as HTMLElement;
 
-    const speakerName = line.speaker === 'linn' ? '林恩'
-      : line.speaker === 'zero' ? '零号'
-      : '旁白';
-    speakerEl.textContent = speakerName;
+    speakerEl.textContent = SPEAKER_NAMES[line.speaker] ?? '旁白';
     textEl.textContent = line.text;
 
     // 立绘切换
-    if (line.portrait === 'linn') {
-      portraitEl.style.backgroundImage = `url(/portraits/linn.png)`;
+    const portraitFile = line.portrait ? PORTRAIT_FILES[line.portrait] : undefined;
+    if (portraitFile) {
+      portraitEl.style.backgroundImage = `url(/portraits/${portraitFile})`;
       portraitEl.style.opacity = '1';
-      portraitEl.dataset.speaker = 'linn';
-    } else if (line.portrait === 'zero') {
-      portraitEl.style.backgroundImage = `url(/portraits/zero.png)`;
-      portraitEl.style.opacity = '1';
-      portraitEl.dataset.speaker = 'zero';
+      portraitEl.dataset.speaker = line.portrait;
     } else {
       portraitEl.style.backgroundImage = '';
       portraitEl.style.opacity = '0.2';

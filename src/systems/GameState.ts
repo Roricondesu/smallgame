@@ -478,10 +478,26 @@ class GameStateClass {
   // ===== 周目 =====
   checkChapterGoal() {
     const ch = this.chapter;
+    const progress = this._save.storyProgress;
+
+    // 50% 里程碑：触发中点剧情
+    if (this._save.totalGold >= ch.targetGold / 2n
+      && !progress.endsWith('_midpoint') && !progress.endsWith('_revelation') && !progress.endsWith('_ready')) {
+      this._save.storyProgress = `ch${this._save.chapterId}_midpoint`;
+      bus.emit(EVT.MILESTONE_REACHED, { type: 'midpoint', chapter: this._save.chapterId });
+    }
+
+    // 75% 揭示：仅第 4 章
+    if (this._save.chapterId === 4
+      && this._save.totalGold >= ch.targetGold * 3n / 4n
+      && progress.endsWith('_midpoint')) {
+      this._save.storyProgress = `ch${this._save.chapterId}_revelation`;
+      bus.emit(EVT.MILESTONE_REACHED, { type: 'revelation', chapter: 4 });
+    }
+
+    // 100%：归零就绪
     if (this._save.totalGold < ch.targetGold) return;
-    // 已展示过归零试炼则不再重复弹窗
-    if (this._save.storyProgress.endsWith('_ready')) return;
-    // 标记为已展示
+    if (progress.endsWith('_ready')) return;
     this._save.storyProgress = `ch${this._save.chapterId}_ready`;
     bus.emit(EVT.PRESTIGE_AVAILABLE);
   }
@@ -504,7 +520,7 @@ class GameStateClass {
     this._save.autoDroppers = {};
     this._save.skillLevels = {};
     this._save.ballInitialValue = toBig(1);
-    this._save.storyProgress = `ch${this._save.chapterId}_ready`;
+    this._save.storyProgress = `ch${this._save.chapterId}_intro`;
     // 新章开始：补充元素弹珠
     this.refillMarbles();
     this._save.selectedMarble = '';

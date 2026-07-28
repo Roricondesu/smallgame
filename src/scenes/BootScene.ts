@@ -11,6 +11,11 @@ export class BootScene extends Phaser.Scene {
     // 加载角色立绘（用于对话系统）
     this.load.image('portrait_linn', '/portraits/linn.png');
     this.load.image('portrait_zero', '/portraits/zero.png');
+    this.load.image('portrait_lily', '/portraits/lily.png');
+    this.load.image('portrait_vera', '/portraits/vera.png');
+    this.load.image('portrait_boss_skull', '/portraits/boss_skull.png');
+    this.load.image('portrait_boss_ghost', '/portraits/boss_ghost.png');
+    this.load.image('portrait_boss_chameleon', '/portraits/boss_chameleon.png');
 
     // 元素图标（HUD 弹珠选择器 / 图鉴用）
     this.load.image('skill_fire', '/skills/fire.png');

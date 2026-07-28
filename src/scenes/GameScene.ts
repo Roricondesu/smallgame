@@ -6,7 +6,7 @@ import Phaser from 'phaser';
 import { GameState, formatNum, bigMulNum } from '../systems/GameState';
 import { PEG_MAP } from '../data/pegs';
 import { MARBLE_MAP } from '../data/marbles';
-import { DIALOGUE_MAP, chapterIntroId } from '../data/dialogues';
+import { DIALOGUE_MAP, chapterIntroId, chapterMidpointId, chapterPrestigeReadyId } from '../data/dialogues';
 import { DialogueSystem } from '../systems/DialogueSystem';
 import { bus, EVT } from '../systems/EventBus';
 import { HUD } from '../ui/HUD';
@@ -256,9 +256,15 @@ export class GameScene extends Phaser.Scene {
     });
     bus.on(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleSelector?.());
     bus.on(EVT.PRESTIGE_AVAILABLE, () => {
-      // 第 1 章首次达到归零条件时，播放归零剧情对话
-      if (GameState.chapterId === 1) {
-        this.tryPlayDialogue('ch1_prestige_ready');
+      // 各章首次达到归零条件时，播放对应归零剧情对话
+      this.tryPlayDialogue(chapterPrestigeReadyId(GameState.chapterId));
+    });
+    bus.on(EVT.MILESTONE_REACHED, (payload: unknown) => {
+      const p = payload as { type: string; chapter: number };
+      if (p.type === 'midpoint') {
+        this.tryPlayDialogue(chapterMidpointId(p.chapter));
+      } else if (p.type === 'revelation') {
+        this.tryPlayDialogue('ch4_revelation');
       }
     });
     bus.on(EVT.MARBLE_USED, (id: unknown) => {
@@ -312,6 +318,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     // 第 1 章：开场对话结束后进入"等放置钉子"
+    // 第 2 章：开场后接"遇见莉莉"对话
+    // 第 3 章：开场后接"遇见薇拉"对话
     // 其他章：仅播放剧情，结束后即 done
     this.time.delayedCall(400, () => {
       this.dialogue.start(intro, () => {
@@ -320,6 +328,12 @@ export class GameScene extends Phaser.Scene {
           this.hud.showToast('在商店中选一枚 +1 钉放到网格上', 'pin');
         } else {
           this.tutorialStage = 'done';
+        }
+        // 第 2/3 章开场后接角色相遇对话
+        if (GameState.chapterId === 2) {
+          this.time.delayedCall(600, () => this.tryPlayDialogue('ch2_meet_lily'));
+        } else if (GameState.chapterId === 3) {
+          this.time.delayedCall(600, () => this.tryPlayDialogue('ch3_meet_vera'));
         }
       });
     });
