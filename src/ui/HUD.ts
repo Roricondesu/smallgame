@@ -96,14 +96,11 @@ export class HUD {
   }
 
   private bindPanelToggles() {
-    // 面板标题折叠按钮（所有屏幕尺寸）
-    document.querySelectorAll('.collapse-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const targetId = (btn as HTMLElement).dataset.target;
-        if (!targetId) return;
-        document.getElementById(targetId)?.classList.toggle('collapsed');
-      });
+    // 点击标题条整体切换悬浮抽屉展开/收起
+    const title = document.querySelector('#left-panel .panel-title');
+    title?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('left-panel')?.classList.toggle('collapsed');
     });
   }
 
