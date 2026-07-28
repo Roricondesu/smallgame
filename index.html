@@ -564,6 +564,230 @@
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
     #toast svg { width: 14px; height: 14px; flex-shrink: 0; }
 
+    /* ===== 元素弹珠选择器（左下角悬浮） ===== */
+    #marble-selector.marble-selector {
+      position: fixed;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      left: 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 10px 10px;
+      pointer-events: auto;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-sm);
+      z-index: 12;
+      max-width: 220px;
+    }
+    .marble-selector-title {
+      font-size: 10px; color: var(--muted);
+      letter-spacing: 1px; text-transform: uppercase;
+      margin-bottom: 6px; padding-left: 2px;
+    }
+    .marble-list {
+      display: flex; flex-wrap: wrap; gap: 4px;
+    }
+    .marble-cell {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s;
+      flex-direction: column;
+    }
+    .marble-cell:hover { background: rgba(255, 255, 255, 0.08); }
+    .marble-cell img {
+      width: 22px; height: 22px;
+      image-rendering: pixelated;
+    }
+    .marble-cell .marble-count {
+      position: absolute;
+      bottom: -3px; right: -3px;
+      background: var(--panel-solid);
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 6px;
+      line-height: 1.2;
+    }
+    .marble-cell.selected {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.3);
+    }
+    .marble-cell.empty {
+      opacity: 0.35;
+      cursor: not-allowed;
+      filter: grayscale(0.8);
+    }
+    .marble-cell.normal {
+      border-style: dashed;
+      background: transparent;
+    }
+    .marble-cell.normal.selected {
+      border-color: var(--text);
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+    }
+    /* 颜色斑点（无图标的普通弹珠用） */
+    .marble-cell .marble-dot {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .marble-cell.normal .marble-dot { background: #8b949e; }
+
+    /* 移动端：弹珠选择器更紧凑 */
+    @media (max-width: 640px) {
+      #marble-selector.marble-selector {
+        left: 8px;
+        right: 8px;
+        max-width: none;
+        padding: 6px 8px 8px;
+      }
+      .marble-selector-title { font-size: 9px; }
+      .marble-cell { width: 34px; height: 34px; }
+      .marble-cell img { width: 20px; height: 20px; }
+    }
+
+    /* ===== 对话覆盖层 ===== */
+    .dialogue-overlay {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.7) 70%, rgba(0, 0, 0, 0.85) 100%);
+      z-index: 90;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      pointer-events: auto;
+      padding: 20px;
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+    .dialogue-overlay.open { display: flex; animation: dialogueFadeIn 0.25s ease; }
+    @keyframes dialogueFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .dialogue-box {
+      width: min(640px, 100%);
+      background: var(--panel-solid);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      gap: 14px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      animation: dialogueSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @keyframes dialogueSlideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .dialogue-portrait {
+      width: 80px; height: 80px;
+      flex-shrink: 0;
+      background-color: rgba(0, 0, 0, 0.4);
+      background-size: cover;
+      background-position: center top;
+      background-repeat: no-repeat;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      transition: opacity 0.2s;
+    }
+    .dialogue-content {
+      flex: 1;
+      display: flex; flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .dialogue-speaker {
+      font-size: 13px;
+      color: var(--gold);
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+    .dialogue-speaker.narrator {
+      color: var(--muted);
+      font-style: italic;
+      font-weight: 500;
+    }
+    .dialogue-text {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.6;
+      flex: 1;
+    }
+    .dialogue-text.narrator {
+      color: var(--muted);
+      font-style: italic;
+      font-size: 13px;
+    }
+    .dialogue-hint {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: right;
+      letter-spacing: 1px;
+      opacity: 0.6;
+    }
+
+    /* 移动端对话样式 */
+    @media (max-width: 640px) {
+      .dialogue-overlay { padding: 12px; }
+      .dialogue-box { padding: 12px; gap: 10px; }
+      .dialogue-portrait { width: 60px; height: 60px; }
+      .dialogue-speaker { font-size: 12px; }
+      .dialogue-text { font-size: 13px; }
+    }
+
+    /* ===== 弹珠图鉴卡片（在 shop-list 中渲染） ===== */
+    .marble-codex-card {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      margin-bottom: 8px;
+      display: flex; gap: 10px;
+      align-items: center;
+    }
+    .marble-codex-icon {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .marble-codex-icon img {
+      width: 24px; height: 24px;
+      image-rendering: pixelated;
+    }
+    .marble-codex-body { flex: 1; min-width: 0; }
+    .marble-codex-name {
+      font-size: 13px; color: var(--text); font-weight: 500;
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 3px;
+    }
+    .marble-codex-charges {
+      font-size: 10px; color: var(--muted);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .marble-codex-effect {
+      font-size: 11px; color: var(--good);
+      margin-bottom: 2px;
+    }
+    .marble-codex-desc {
+      font-size: 11px; color: var(--muted);
+      line-height: 1.4;
+    }
+
     /* 滚动条 */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -975,9 +1199,16 @@
           <button class="tab-btn" data-tab="autos">自动器</button>
           <button class="tab-btn" data-tab="skills">技能</button>
           <button class="tab-btn" data-tab="global">全局</button>
+          <button class="tab-btn" data-tab="marbles">弹珠</button>
         </div>
         <div id="shop-list"></div>
       </div>
+    </div>
+
+    <!-- 元素弹珠选择器（左下角悬浮） -->
+    <div id="marble-selector" class="marble-selector">
+      <div class="marble-selector-title">元素弹珠</div>
+      <div id="marble-list" class="marble-list"></div>
     </div>
 
     <div id="toast"></div>

@@ -181,6 +181,9 @@ export class SaveSystem {
 
     if (!merged.skillLevels) merged.skillLevels = {};
     if (!merged.crystalUpgrades) merged.crystalUpgrades = {};
+    if (!merged.marbles) merged.marbles = {};
+    if (merged.selectedMarble === undefined) merged.selectedMarble = '';
+    if (!merged.seenDialogues) merged.seenDialogues = [];
 
     // 迁移旧版 number → bigint（×100 缩放）
     const numToBig = (v: unknown): bigint => {

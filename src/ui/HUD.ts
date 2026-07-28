@@ -7,15 +7,17 @@ import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
 import { SKILLS, SKILL_MAP } from '../data/skills';
 import { AUTO_DROPPERS, AUTO_MAP, CRYSTAL_UPGRADES } from '../data/chapters';
+import { MARBLES } from '../data/marbles';
 import { svgIcon, operatorIcon, type IconKey } from './icons';
 import type { PegSave } from '../types';
 
 export class HUD {
   private scene: Phaser.Scene;
   private root: HTMLElement;
-  private shopTab: 'pegs' | 'autos' | 'skills' | 'global' = 'pegs';
+  private shopTab: 'pegs' | 'autos' | 'skills' | 'global' | 'marbles' = 'pegs';
   private onPlacementSelect?: (typeId: string | null) => void;
   private selectedPegType: string | null = null;
+  private marbleSelectorBound = false;
 
   // 实时金币获取速率：基于 totalGold 的 5s 滚动窗口
   private rateSamples: { t: number; total: number }[] = [];
@@ -40,6 +42,8 @@ export class HUD {
     this.renderShop();
     this.bindModals();
     this.bindEvents();
+    this.bindMarbleSelector();
+    this.refreshMarbleSelector();
     this.updateHeader();
     this.startRateTracking();
     this.updateChapterProgress();
@@ -284,7 +288,93 @@ export class HUD {
     if (this.shopTab === 'pegs') this.renderPegShop(list);
     else if (this.shopTab === 'autos') this.renderAutoShop(list);
     else if (this.shopTab === 'skills') this.renderSkillShop(list);
+    else if (this.shopTab === 'marbles') this.renderMarbleCodex(list);
     else this.renderGlobalShop(list);
+  }
+
+  /** 弹珠图鉴：展示所有元素弹珠的剩余次数与效果说明 */
+  private renderMarbleCodex(list: HTMLElement) {
+    const tip = document.createElement('div');
+    tip.style.cssText = 'color: var(--muted); font-size: 11px; line-height: 1.6; margin-bottom: 10px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px;';
+    tip.textContent = '元素弹珠在左下角选择器使用。每章自动补充，被选中的弹珠在手动投放时消耗 1 次。';
+    list.appendChild(tip);
+
+    for (const m of MARBLES) {
+      const charges = GameState.getMarbleCharges(m.id);
+      const selected = GameState.selectedMarble === m.id;
+      const el = document.createElement('div');
+      el.className = 'marble-codex-card';
+      el.innerHTML = `
+        <div class="marble-codex-icon">
+          <img src="/skills/${m.element}.png" alt="${m.name}" />
+        </div>
+        <div class="marble-codex-body">
+          <div class="marble-codex-name">
+            <span>${m.name}</span>
+            <span class="marble-codex-charges">剩余 ${charges}/${m.charges}</span>
+            ${selected ? `<span class="marble-codex-charges" style="color:var(--gold); border-color: var(--gold);">已选中</span>` : ''}
+          </div>
+          <div class="marble-codex-effect">${m.effect}</div>
+          <div class="marble-codex-desc">${m.desc}</div>
+        </div>
+      `;
+      el.addEventListener('click', () => {
+        if (charges > 0) {
+          GameState.selectMarble(selected ? '' : m.id);
+          this.refreshMarbleSelector();
+          this.renderShop();
+        } else {
+          this.showToast(`${m.name} 已用完`, 'info');
+        }
+      });
+      list.appendChild(el);
+    }
+  }
+
+  /** 弹珠选择器（左下角悬浮）：实时显示剩余次数 */
+  refreshMarbleSelector() {
+    const list = document.getElementById('marble-list');
+    if (!list) return;
+    list.innerHTML = '';
+    // 普通弹珠（不消耗）
+    const normal = document.createElement('div');
+    normal.className = 'marble-cell normal' + (GameState.selectedMarble === '' ? ' selected' : '');
+    normal.title = '普通弹珠（不消耗次数）';
+    normal.innerHTML = `<div class="marble-dot"></div>`;
+    normal.addEventListener('click', () => {
+      GameState.selectMarble('');
+      this.refreshMarbleSelector();
+    });
+    list.appendChild(normal);
+    // 元素弹珠
+    for (const m of MARBLES) {
+      const charges = GameState.getMarbleCharges(m.id);
+      const selected = GameState.selectedMarble === m.id;
+      const el = document.createElement('div');
+      el.className = `marble-cell ${selected ? 'selected' : ''} ${charges <= 0 ? 'empty' : ''}`;
+      el.title = `${m.name} · ${m.effect}\n剩余 ${charges}/${m.charges}`;
+      el.innerHTML = `
+        <img src="/skills/${m.element}.png" alt="${m.name}" />
+        <span class="marble-count">${charges}</span>
+      `;
+      el.addEventListener('click', () => {
+        if (charges <= 0) {
+          this.showToast(`${m.name} 已用完`, 'info');
+          return;
+        }
+        GameState.selectMarble(selected ? '' : m.id);
+        this.refreshMarbleSelector();
+      });
+      list.appendChild(el);
+    }
+  }
+
+  private bindMarbleSelector() {
+    if (this.marbleSelectorBound) return;
+    this.marbleSelectorBound = true;
+    bus.on(EVT.MARBLE_USED, () => this.refreshMarbleSelector());
+    bus.on(EVT.MARBLE_SELECTED, () => this.refreshMarbleSelector());
+    bus.on(EVT.CHAPTER_CHANGED, () => this.refreshMarbleSelector());
   }
 
   private renderPegShop(list: HTMLElement) {

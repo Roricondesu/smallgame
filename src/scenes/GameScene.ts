@@ -5,9 +5,12 @@
 import Phaser from 'phaser';
 import { GameState, formatNum, bigMulNum } from '../systems/GameState';
 import { PEG_MAP } from '../data/pegs';
+import { MARBLE_MAP } from '../data/marbles';
+import { DIALOGUE_MAP, chapterIntroId } from '../data/dialogues';
+import { DialogueSystem } from '../systems/DialogueSystem';
 import { bus, EVT } from '../systems/EventBus';
 import { HUD } from '../ui/HUD';
-import type { PegSave } from '../types';
+import type { PegSave, MarbleConfig } from '../types';
 import { BALANCE } from '../types';
 
 // Matter 弹珠对象
@@ -20,6 +23,11 @@ interface Ball {
   sageCopy: bigint;
   lastPegId?: string;
   stuckSince?: number;
+  marble?: MarbleConfig | null;
+  /** 已被毒蚀标记过的钉子 id（去重用） */
+  poisonedPegs?: Set<string>;
+  /** 雷霆链击的剩余次数 */
+  thunderCharges?: number;
 }
 
 // Matter 钉子对象
@@ -51,6 +59,7 @@ export class GameScene extends Phaser.Scene {
   private pegSprites: Map<string, PegSprite> = new Map();
   private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
+  private dialogue!: DialogueSystem;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -58,6 +67,8 @@ export class GameScene extends Phaser.Scene {
   private frenzyOverlay!: Phaser.GameObjects.Rectangle;
   private placementCursor: Phaser.GameObjects.Arc | null = null;
   private autoAccumulator = 0;
+  // 教程状态机：跟踪玩家是否完成首次放钉/投弹
+  private tutorialStage: 'intro' | 'await_peg' | 'await_drop' | 'marbles' | 'done' = 'intro';
   // 球/钉子的碰撞体集合，用于碰撞回调过滤
   private ballLabels = new WeakSet<MatterJS.Body>();
   private pegLabels = new WeakSet<MatterJS.Body>();
@@ -69,6 +80,8 @@ export class GameScene extends Phaser.Scene {
   private wallLabels = new WeakSet<MatterJS.Body>();
   // 球上次撞墙时间，避免连续结算
   private ballWallCooldown = new WeakMap<Ball, number>();
+  // 毒蚀钉子的临时增益：pegId -> 过期时间戳
+  private poisonedPegBuffs = new Map<string, number>();
 
   // 布局相关引用（resize 时需重新定位的元素）
   private gridBg!: Phaser.GameObjects.Graphics;
@@ -180,6 +193,12 @@ export class GameScene extends Phaser.Scene {
             this.removePlaceholder(grid.gx, grid.gy);
             this.renderPeg(peg);
             this.updatePlacementCursor();
+            // 教程：首次放钉 → 推进到等待投弹
+            if (this.tutorialStage === 'await_peg') {
+              this.tutorialStage = 'await_drop';
+              this.tryPlayDialogue('ch1_first_peg');
+              this.hud.showToast('点击上方投放区，让弹珠落下', 'ball');
+            }
           }
         }
         return;
@@ -207,6 +226,15 @@ export class GameScene extends Phaser.Scene {
     });
     this.hud.mount();
 
+    // 对话系统
+    this.dialogue = new DialogueSystem();
+    this.dialogue.mount();
+
+    // 元素弹珠：首次进入或新章补充
+    if (!GameState.save.marbles || Object.keys(GameState.marbles).length === 0) {
+      GameState.refillMarbles();
+    }
+
     // 事件监听
     bus.on(EVT.ACTIVE_TRIGGERED, (payload: unknown) => {
       const p = payload as { skillId: string; duration: number };
@@ -226,6 +254,22 @@ export class GameScene extends Phaser.Scene {
         this.matter.world.engine.timing.timeScale = 1;
       }
     });
+    bus.on(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleSelector?.());
+    bus.on(EVT.PRESTIGE_AVAILABLE, () => {
+      // 第 1 章首次达到归零条件时，播放归零剧情对话
+      if (GameState.chapterId === 1) {
+        this.tryPlayDialogue('ch1_prestige_ready');
+      }
+    });
+    bus.on(EVT.MARBLE_USED, (id: unknown) => {
+      // 玩家首次使用元素弹珠时，标记教程完成
+      if (this.tutorialStage === 'marbles') {
+        this.tutorialStage = 'done';
+      }
+      const marbleId = String(id);
+      const cfg = MARBLE_MAP[marbleId];
+      if (cfg) this.hud.showToast(`${cfg.name} 已使用`, 'ball');
+    });
 
     // 定时器
     this.time.addEvent({ delay: 100, loop: true, callback: this.tickAuto, callbackScope: this });
@@ -236,9 +280,8 @@ export class GameScene extends Phaser.Scene {
       if (interval > 0) this.time.addEvent({ delay: interval * 1000, loop: true, callback: () => GameState.saveGame() });
     }
 
-    if (GameState.pegs.length === 0 && GameState.save.stats.totalBalls === 0) {
-      this.showTutorialTip();
-    }
+    // 教程引导：第 1 章首次进入时触发章节开场对话
+    this.scheduleIntroDialogue();
 
     // 画布尺寸变化时重新布局（窗口缩放 / 设备旋转）
     this.scale.on('resize', this.onResize, this);
@@ -246,9 +289,40 @@ export class GameScene extends Phaser.Scene {
     this.events.on('shutdown', () => {
       GameState.saveGame();
       this.hud.unmount();
+      this.dialogue?.unmount();
       this.scale.off('resize', this.onResize, this);
     });
     this.events.on('pause', () => GameState.saveGame());
+  }
+
+  /** 章节开场对话：未看过则播放；并初始化教程状态机 */
+  private scheduleIntroDialogue() {
+    const introId = chapterIntroId(GameState.chapterId);
+    const intro = DIALOGUE_MAP[introId];
+    if (!intro) return;
+    if (GameState.hasSeenDialogue(introId)) {
+      // 跳过对话，但若处于第 1 章且无钉子，则进入"等放置钉子"阶段
+      if (GameState.chapterId === 1 && GameState.pegs.length === 0 && GameState.save.stats.totalBalls === 0) {
+        this.tutorialStage = 'await_peg';
+      } else if (GameState.chapterId === 1 && GameState.save.stats.totalBalls === 0) {
+        this.tutorialStage = 'await_drop';
+      } else {
+        this.tutorialStage = 'done';
+      }
+      return;
+    }
+    // 第 1 章：开场对话结束后进入"等放置钉子"
+    // 其他章：仅播放剧情，结束后即 done
+    this.time.delayedCall(400, () => {
+      this.dialogue.start(intro, () => {
+        if (GameState.chapterId === 1) {
+          this.tutorialStage = 'await_peg';
+          this.hud.showToast('在商店中选一枚 +1 钉放到网格上', 'pin');
+        } else {
+          this.tutorialStage = 'done';
+        }
+      });
+    });
   }
 
   // 基于固定设计尺寸计算网格布局：12×16 网格水平居中，垂直留出顶部投放区与底部结算区
@@ -464,19 +538,43 @@ export class GameScene extends Phaser.Scene {
     let value = init;
     if (lvl > 0) value = bigMulNum(init, 1 + lvl * 0.1);
 
+    // 元素弹珠：仅在第一颗消耗次数，多重投掷共享同一弹珠效果
+    let marble: MarbleConfig | null = null;
+    if (GameState.selectedMarble) {
+      marble = GameState.consumeSelectedMarble();
+      if (marble) {
+        // 圣光弹珠：数值立即翻倍
+        if (marble.element === 'holy') {
+          value = value * 2n;
+        }
+      }
+    }
+
     const multiThrow = GameState.getSkillLevel('multiThrow');
     const count = 1 + multiThrow;
     for (let i = 0; i < count; i++) {
       const offsetX = x + (i - count / 2) * 16;
-      this.spawnBall(offsetX, 10, value, 'manual');
+      this.spawnBall(offsetX, 10, value, 'manual', marble);
     }
     GameState.onBallDropped('manual');
+
+    // 教程：首次投弹 → 播放对话
+    if (this.tutorialStage === 'await_drop') {
+      this.tutorialStage = 'marbles';
+      this.tryPlayDialogue('ch1_first_drop');
+      // 间隔后引导玩家使用元素弹珠
+      this.time.delayedCall(4000, () => {
+        if (this.tutorialStage === 'marbles' && !GameState.hasSeenDialogue('ch1_marbles')) {
+          this.tryPlayDialogue('ch1_marbles');
+        }
+      });
+    }
   }
 
-  private spawnBall(x: number, y: number, value: bigint, source: 'manual' | 'auto') {
+  private spawnBall(x: number, y: number, value: bigint, source: 'manual' | 'auto', marble?: MarbleConfig | null) {
     if (this.balls.length >= BALANCE.maxBallsBase + GameState.getSkillLevel('capacity') * 5) return;
     const golden = GameState.isSkillActive('goldenRain');
-    const texture = this.ballTextureFor(value, golden);
+    const texture = marble ? `ball_${marble.element}` : this.ballTextureFor(value, golden);
 
     // Matter 圆形弹珠：restitution 控制弹力，friction 较低避免粘附
     const sprite = this.matter.add.image(x, y, texture, undefined, {
@@ -504,10 +602,16 @@ export class GameScene extends Phaser.Scene {
 
     const text = this.add.text(x, y - 14, formatNum(value), {
       fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '11px',
-      color: golden ? '#ffd700' : '#ffffff', stroke: '#000', strokeThickness: 3,
+      color: golden ? '#ffd700' : (marble ? '#' + marble.color.toString(16).padStart(6, '0') : '#ffffff'),
+      stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(5);
 
-    const ball: Ball = { sprite, text, value, source, golden, sageCopy: 0n };
+    const ball: Ball = {
+      sprite, text, value, source, golden, sageCopy: 0n,
+      marble: marble ?? null,
+      thunderCharges: marble?.element === 'thunder' ? 2 : 0,
+      poisonedPegs: marble?.element === 'poison' ? new Set() : undefined,
+    };
     this.balls.push(ball);
     this.ballBySprite.set(sprite, ball);
   }
@@ -521,6 +625,15 @@ export class GameScene extends Phaser.Scene {
     if (value >= 10000n) return 'ball_green';   // 原 100
     if (value >= 1000n) return 'ball_blue';     // 原 10
     return 'ball_gray';
+  }
+
+  /** 播放对话（若未看过） */
+  private tryPlayDialogue(id: string) {
+    if (!DIALOGUE_MAP[id]) return;
+    if (GameState.hasSeenDialogue(id)) return;
+    this.time.delayedCall(600, () => {
+      this.dialogue.start(DIALOGUE_MAP[id]);
+    });
   }
 
   private onBallPeg(ball: Ball, ps: PegSprite) {
@@ -558,6 +671,11 @@ export class GameScene extends Phaser.Scene {
       : t.operator === 'maxMul' ? '×2+' : '';
     this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, opLabel, t.color);
 
+    // ===== 元素弹珠效果 =====
+    if (ball.marble) {
+      this.applyMarbleOnPeg(ball, ps);
+    }
+
     // 防冻结：先完成旧 tween（恢复目标 scale 到 1），再重置后启动新 tween
     // 高频碰撞下若直接 add 会让目标卡在放大状态
     this.tweens.killTweensOf(ps.sprite);
@@ -569,8 +687,71 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: ps.text, scaleX: 1.4, scaleY: 1.4, duration: 80, yoyo: true });
     }
 
-    if (ball.sprite.texture.key !== this.ballTextureFor(ball.value, ball.golden)) {
+    if (!ball.marble && ball.sprite.texture.key !== this.ballTextureFor(ball.value, ball.golden)) {
       ball.sprite.setTexture(this.ballTextureFor(ball.value, ball.golden));
+    }
+  }
+
+  /** 弹珠与钉子碰撞时触发的元素效果 */
+  private applyMarbleOnPeg(ball: Ball, ps: PegSprite) {
+    if (!ball.marble) return;
+    switch (ball.marble.element) {
+      case 'fire': {
+        // 每次碰撞 ×1.5
+        ball.value = bigMulNum(ball.value, 1.5);
+        ball.text.setText(formatNum(ball.value));
+        this.spawnFloatText(ball.sprite.x + 14, ball.sprite.y - 4, '×1.5', ball.marble.color);
+        break;
+      }
+      case 'poison': {
+        // 标记该钉子，下次结算 ×1.3
+        if (!ball.poisonedPegs) ball.poisonedPegs = new Set();
+        if (!ball.poisonedPegs.has(ps.pegId)) {
+          ball.poisonedPegs.add(ps.pegId);
+          this.poisonedPegBuffs.set(ps.pegId, Date.now() + 8000);
+          this.spawnFloatText(ps.sprite.x, ps.sprite.y - 12, '毒', ball.marble.color);
+          // 视觉染绿
+          ps.sprite.setTint(ball.marble.color);
+          this.time.delayedCall(8000, () => {
+            if (this.pegSprites.get(ps.pegId)) ps.sprite.clearTint();
+            this.poisonedPegBuffs.delete(ps.pegId);
+          });
+        }
+        break;
+      }
+      case 'thunder': {
+        // 雷霆链击：随机选择附近 1 个钉子额外触发一次相同运算
+        if ((ball.thunderCharges ?? 0) > 0) {
+          ball.thunderCharges = (ball.thunderCharges ?? 0) - 1;
+          const neighbors: PegSprite[] = [];
+          for (const ps2 of this.pegSprites.values()) {
+            if (ps2.pegId === ps.pegId || ps2.placeholder) continue;
+            const dx = ps2.sprite.x - ps.sprite.x;
+            const dy = ps2.sprite.y - ps.sprite.y;
+            if (dx * dx + dy * dy < 100 * 100) neighbors.push(ps2);
+          }
+          if (neighbors.length > 0) {
+            const target = neighbors[Math.floor(Math.random() * neighbors.length)];
+            const peg2 = GameState.pegs.find((p) => p.id === target.pegId);
+            if (peg2) {
+              const t2 = PEG_MAP[peg2.typeId];
+              if (t2 && t2.operator !== '%') {
+                const { value: v2 } = GameState.computePeg(peg2, ball.value, 1);
+                ball.value = v2;
+                ball.text.setText(formatNum(v2));
+                this.spawnFloatText(target.sprite.x, target.sprite.y - 14, '⚡', ball.marble.color);
+                this.tweens.killTweensOf(target.sprite);
+                target.sprite.setScale(1);
+                this.tweens.add({ targets: target.sprite, scaleX: 1.4, scaleY: 1.4, duration: 80, yoyo: true });
+              }
+            }
+          }
+        }
+        break;
+      }
+      // ice / holy / dark 在 settleBall 中触发
+      default:
+        break;
     }
   }
 
@@ -585,6 +766,26 @@ export class GameScene extends Phaser.Scene {
 
     if (ball.sageCopy > 0n) {
       gold = gold + bigMulNum(ball.sageCopy, multiplier);
+    }
+
+    // ===== 元素弹珠结算效果 =====
+    if (ball.marble) {
+      switch (ball.marble.element) {
+        case 'ice': {
+          // 落底翻倍
+          gold = gold * 2n;
+          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, '冰花 ×2', ball.marble.color);
+          break;
+        }
+        case 'dark': {
+          // 暗影：复制数值（再加一份 ball.value）
+          gold = gold + bigMulNum(ball.value, multiplier);
+          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, '暗影复制', ball.marble.color);
+          break;
+        }
+        default:
+          break;
+      }
     }
 
     const combo = GameState.addCombo();
@@ -760,7 +961,7 @@ export class GameScene extends Phaser.Scene {
     while (this.autoAccumulator >= 1) {
       this.autoAccumulator -= 1;
       const x = GameState.getSkillLevel('smartDrop') > 0 ? DESIGN_W / 2 : (0.2 + Math.random() * 0.6) * DESIGN_W;
-      this.spawnBall(x, 30, GameState.ballInitialValue, 'auto');
+      this.spawnBall(x, 30, GameState.ballInitialValue, 'auto', null);
       GameState.onBallDropped('auto');
     }
   }
@@ -789,12 +990,6 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: t, y: y - 40, alpha: 0, duration: 600,
       onComplete: () => t.destroy(),
-    });
-  }
-
-  private showTutorialTip() {
-    this.time.delayedCall(1500, () => {
-      this.hud.showToast('先买 +1 钉，再点击投放区开始赚钱', 'pin');
     });
   }
 }

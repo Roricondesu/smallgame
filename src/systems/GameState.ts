@@ -7,6 +7,7 @@ import { bus, EVT } from './EventBus';
 import { PEG_MAP } from '../data/pegs';
 import { SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
 import { CHAPTERS, CHAPTER_MAP, AUTO_MAP, CRYSTAL_MAP } from '../data/chapters';
+import { MARBLES, MARBLE_MAP } from '../data/marbles';
 import type { SaveData, PegSave, AutoDropperSave } from '../types';
 import { BALANCE } from '../types';
 import {
@@ -72,6 +73,9 @@ class GameStateClass {
   get pegs() { return this._save.pegs; }
   get autoDroppers() { return this._save.autoDroppers; }
   get storyProgress() { return this._save.storyProgress; }
+  get marbles() { return this._save.marbles ?? {}; }
+  get selectedMarble() { return this._save.selectedMarble ?? ''; }
+  get seenDialogues() { return this._save.seenDialogues ?? []; }
 
   init() {}
 
@@ -501,10 +505,14 @@ class GameStateClass {
     this._save.skillLevels = {};
     this._save.ballInitialValue = toBig(1);
     this._save.storyProgress = `ch${this._save.chapterId}_ready`;
+    // 新章开始：补充元素弹珠
+    this.refillMarbles();
+    this._save.selectedMarble = '';
     bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     bus.emit(EVT.CRYSTAL_CHANGED, this._save.crystal);
     bus.emit(EVT.BALL_VALUE_CHANGED, this._save.ballInitialValue);
     bus.emit(EVT.CHAPTER_CHANGED, this._save.chapterId);
+    bus.emit(EVT.MARBLE_SELECTED, '');
     this.saveGame();
   }
 
@@ -539,6 +547,77 @@ class GameStateClass {
     }
     this._save.lastSeen = Date.now();
     return { gold, seconds };
+  }
+
+  // ===== 元素弹珠系统 =====
+  /** 补充元素弹珠：新章开始 / 进入游戏时调用，按 MARBLES 配置填充 */
+  refillMarbles() {
+    if (!this._save.marbles) this._save.marbles = {};
+    for (const m of MARBLES) {
+      // 不叠加，取 max（防止反复触发堆叠）
+      const cur = this._save.marbles[m.id] ?? 0;
+      this._save.marbles[m.id] = Math.max(cur, m.charges);
+    }
+  }
+
+  /** 获取某种元素弹珠剩余次数 */
+  getMarbleCharges(id: string): number {
+    return this.marbles[id] ?? 0;
+  }
+
+  /** 当前选中的弹珠配置（无选中返回 null） */
+  getSelectedMarbleConfig() {
+    const id = this.selectedMarble;
+    if (!id) return null;
+    return MARBLE_MAP[id] ?? null;
+  }
+
+  /** 选择元素弹珠（id='' 表示切回普通弹珠） */
+  selectMarble(id: string) {
+    if (id && !MARBLE_MAP[id]) return;
+    // 切换前若已选其他弹珠，不退还次数（已使用即消耗）
+    this._save.selectedMarble = id;
+    bus.emit(EVT.MARBLE_SELECTED, id);
+  }
+
+  /** 投放一颗元素弹珠：扣减次数并返回当前选中的弹珠配置；若次数耗尽自动回退普通 */
+  consumeSelectedMarble(): import('../types').MarbleConfig | null {
+    const id = this.selectedMarble;
+    if (!id) return null;
+    const cur = this.getMarbleCharges(id);
+    if (cur <= 0) {
+      this._save.selectedMarble = '';
+      bus.emit(EVT.MARBLE_SELECTED, '');
+      return null;
+    }
+    this._save.marbles![id] = cur - 1;
+    bus.emit(EVT.MARBLE_USED, id);
+    if (this._save.marbles![id] <= 0) {
+      // 自动取消选中
+      this._save.selectedMarble = '';
+      bus.emit(EVT.MARBLE_SELECTED, '');
+    }
+    return MARBLE_MAP[id] ?? null;
+  }
+
+  // ===== 对话系统 =====
+  /** 触发对话：仅在未播放过时触发 */
+  triggerDialogue(dialogueId: string, force = false): boolean {
+    if (!force && this.seenDialogues.includes(dialogueId)) return false;
+    bus.emit(EVT.DIALOGUE_TRIGGER, dialogueId);
+    return true;
+  }
+
+  /** 标记对话为已观看 */
+  markDialogueSeen(dialogueId: string) {
+    if (!this._save.seenDialogues) this._save.seenDialogues = [];
+    if (!this._save.seenDialogues.includes(dialogueId)) {
+      this._save.seenDialogues.push(dialogueId);
+    }
+  }
+
+  hasSeenDialogue(dialogueId: string): boolean {
+    return this.seenDialogues.includes(dialogueId);
   }
 }
 

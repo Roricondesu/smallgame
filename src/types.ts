@@ -34,6 +34,12 @@ export interface SaveData {
     totalGoldEarned: bigint;
     highestBallValue: bigint;
   };
+  // 弹珠系统：每种元素弹珠的剩余使用次数（每章自动补充）
+  marbles?: Record<string, number>;
+  // 当前选中的弹珠元素 ID，'' 表示使用普通弹珠
+  selectedMarble?: string;
+  // 已观看过对话的 ID 集合（避免重复播放）
+  seenDialogues?: string[];
 }
 
 export interface PegConfig {
@@ -107,6 +113,20 @@ export interface CrystalUpgrade {
   getValue: (level: number) => number;
   icon: import('./ui/icons').IconKey;
   desc: string;
+}
+
+/** 元素弹珠配置：不同弹珠有不同效果与元素 */
+export interface MarbleConfig {
+  id: string;
+  name: string;
+  element: 'fire' | 'ice' | 'thunder' | 'poison' | 'holy' | 'dark';
+  color: number;
+  /** 每章自动补充的使用次数 */
+  charges: number;
+  /** 效果简述（HUD 展示用） */
+  effect: string;
+  desc: string;
+  /** 释放时触发：返回特殊倍率（作用于本球），或副作用描述 */
 }
 
 export const BALANCE = {
