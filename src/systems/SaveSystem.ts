@@ -202,17 +202,19 @@ export class SaveSystem {
   // 离线收益：基于已购买自动器的投放效率估算
   static calculateOffline(data: SaveData): { gold: bigint; seconds: number } {
     const now = Date.now();
-    const maxHours = BALANCE.offlineMaxHours + (data.skillLevels?.offlineMax || 0);
+    const maxHours = BALANCE.offlineMaxHours + (data.skillLevels?.offlineMax || 0) + (data.crystalUpgrades?.offlineCap || 0);
     const maxSeconds = maxHours * 3600;
     const diff = Math.max(0, Math.min((now - data.lastSeen) / 1000, maxSeconds));
     if (diff <= 0) return { gold: 0n, seconds: 0 };
 
+    // 永久自动效率：离线结算同样享受全局提速
+    const autoSpeedMul = Math.max(0.1, 1 - (data.crystalUpgrades?.autoSpeed || 0) * 0.03);
     let rate = 0;
     for (const [id, info] of Object.entries(data.autoDroppers)) {
       const cfg = AUTO_MAP[id];
       if (!cfg || info.count <= 0) continue;
       const speedMul = 1 - info.speedLevel * cfg.speedPerLevel;
-      const interval = cfg.interval * Math.max(0.1, speedMul);
+      const interval = cfg.interval * Math.max(0.1, speedMul) * autoSpeedMul;
       const mulMatch = cfg.id.match(/^multi(\d+)?$/);
       const mul = mulMatch ? (mulMatch[1] ? parseInt(mulMatch[1], 10) : 2) : 1;
       rate += (info.count * mul) / interval;

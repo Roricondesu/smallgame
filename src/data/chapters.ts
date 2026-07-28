@@ -92,6 +92,36 @@ export const CRYSTAL_UPGRADES: CrystalUpgrade[] = [
     getValue: (lvl) => 1 + lvl * 0.05,
     icon: 'crystal', desc: '提升每次归零获得的数晶',
   },
+  {
+    id: 'ballValueBoost', name: '永久弹珠强化', maxLevel: 20, baseCost: 25, costGrowth: 1.5,
+    effect: (lvl) => `初始弹珠数值 +${lvl * 10}%`,
+    getValue: (lvl) => 1 + lvl * 0.1,
+    icon: 'ball', desc: '每周目都生效的弹珠起始数值加成',
+  },
+  {
+    id: 'autoSpeed', name: '永久自动效率', maxLevel: 15, baseCost: 30, costGrowth: 1.6,
+    effect: (lvl) => `自动器间隔 -${lvl * 3}%`,
+    getValue: (lvl) => Math.max(0.1, 1 - lvl * 0.03),
+    icon: 'speed', desc: '所有自动投弹器永久提速',
+  },
+  {
+    id: 'critPower', name: '永久暴击', maxLevel: 20, baseCost: 35, costGrowth: 1.5,
+    effect: (lvl) => `暴击倍率 +${(lvl * 0.2).toFixed(1)}`,
+    getValue: (lvl) => lvl * 0.2,
+    icon: 'crit', desc: '暴击伤害永久提升',
+  },
+  {
+    id: 'pegCap', name: '永久钉子容量', maxLevel: 20, baseCost: 20, costGrowth: 1.6,
+    effect: (lvl) => `钉子数量上限 +${lvl}`,
+    getValue: (lvl) => lvl,
+    icon: 'pin', desc: '可放置更多钉子',
+  },
+  {
+    id: 'offlineCap', name: '永久离线时长', maxLevel: 20, baseCost: 30, costGrowth: 1.5,
+    effect: (lvl) => `离线上限 +${lvl} 小时`,
+    getValue: (lvl) => lvl,
+    icon: 'offline', desc: '延长离线收益结算时间',
+  },
 ];
 
 export const CRYSTAL_MAP: Record<string, CrystalUpgrade> = Object.fromEntries(CRYSTAL_UPGRADES.map((c) => [c.id, c]));

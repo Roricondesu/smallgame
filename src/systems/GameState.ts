@@ -143,7 +143,7 @@ class GameStateClass {
     const existing = this._save.pegs.find((p) => p.x === gx && p.y === gy);
     if (existing) return null;
 
-    const maxPegs = BALANCE.maxPegsBase + this.getSkillLevel('capacityPegs') * 3;
+    const maxPegs = BALANCE.maxPegsBase + this.getSkillLevel('capacityPegs') * 3 + this.getCrystalLevel('pegCap');
     if (this._save.pegs.length >= maxPegs) {
       bus.emit(EVT.TOAST, '钉子数量已达上限');
       return null;
@@ -210,7 +210,7 @@ class GameStateClass {
     const critChance = BALANCE.critChanceBase + this.getSkillLevel('critRate') * 0.02;
     if (Math.random() < critChance) {
       crit = true;
-      const critMul = 2 + this.getSkillLevel('critDmg') * 0.25;
+      const critMul = 2 + this.getSkillLevel('critDmg') * 0.25 + this.getCrystalLevel('critPower') * 0.2;
       v = bigMulNum(v, critMul);
     }
 
@@ -312,8 +312,13 @@ class GameStateClass {
   computeInitialValue(): bigint {
     const base = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
     const lvl = this.getSkillLevel('initialValue');
-    if (lvl < base.length) return toBig(base[lvl]);
-    return toBig(base[base.length - 1] * Math.pow(2, lvl - base.length + 1));
+    let v: bigint;
+    if (lvl < base.length) v = toBig(base[lvl]);
+    else v = toBig(base[base.length - 1] * Math.pow(2, lvl - base.length + 1));
+    // 永久弹珠强化：每周目生效的起始数值加成
+    const boost = 1 + this.getCrystalLevel('ballValueBoost') * 0.1;
+    if (boost > 1) v = bigMulNum(v, boost);
+    return v;
   }
 
   triggerActive(id: string): boolean {
@@ -424,11 +429,13 @@ class GameStateClass {
 
   getAutoDropRate(): number {
     let rate = 0;
+    // 永久自动效率：全局缩短所有自动器间隔
+    const autoSpeedMul = Math.max(0.1, 1 - this.getCrystalLevel('autoSpeed') * 0.03);
     for (const [id, info] of Object.entries(this._save.autoDroppers)) {
       const cfg = AUTO_MAP[id];
       if (!cfg || info.count <= 0) continue;
       const speedMul = Math.max(0.1, 1 - info.speedLevel * cfg.speedPerLevel);
-      const interval = cfg.interval * speedMul;
+      const interval = cfg.interval * speedMul * autoSpeedMul;
       // multi/multi3/multiN：每次投多颗，按 id 中的数字决定倍数
       const mulMatch = cfg.id.match(/^multi(\d+)?$/);
       const mul = mulMatch ? (mulMatch[1] ? parseInt(mulMatch[1], 10) : 2) : 1;

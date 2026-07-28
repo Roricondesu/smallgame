@@ -6,13 +6,13 @@ export const SKILLS: SkillConfig[] = [
   // 手动系
   {
     id: 'initialValue', name: '初始弹珠数字', category: 'manual', maxLevel: 50,
-    baseCost: 50, costGrowth: 1.8,
+    baseCost: 50, costGrowth: 2,
     effect: (lvl) => `初始值提升至 ${[1,5,10,25,50,100,250,500,1000,2500,5000,10000][lvl] ?? 10000 * Math.pow(2, lvl-11)}`,
     icon: 'ball', desc: '提升每次投下的弹珠起始数值',
   },
   {
     id: 'chargeThrow', name: '蓄力投掷', category: 'manual', maxLevel: 30,
-    baseCost: 300, costGrowth: 1.9,
+    baseCost: 300, costGrowth: 2,
     effect: (lvl) => `手动弹珠额外 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
     icon: 'charge', desc: '手动点击投下的弹珠获得加成',
@@ -68,14 +68,14 @@ export const SKILLS: SkillConfig[] = [
   },
   {
     id: 'smartDrop', name: '智能投放', category: 'auto', maxLevel: 1,
-    baseCost: 500000, costGrowth: 1,
+    baseCost: 500000, costGrowth: 2,
     effect: () => '自动器优先选择高收益落点',
     icon: 'smart', desc: '自动投弹器变得更聪明',
     prereq: { id: 'autoCrit', level: 5 }, prereqBonusLevels: 1,
   },
   {
     id: 'offlineMax', name: '离线时长', category: 'auto', maxLevel: 30,
-    baseCost: 200000, costGrowth: 1.7,
+    baseCost: 200000, costGrowth: 2,
     effect: (lvl) => `离线上限 +${lvl} 小时`,
     getValue: (lvl) => lvl,
     icon: 'offline', desc: '延长离线收益结算时间',
@@ -83,7 +83,7 @@ export const SKILLS: SkillConfig[] = [
   },
   {
     id: 'offlineRate', name: '离线效率', category: 'auto', maxLevel: 30,
-    baseCost: 800000, costGrowth: 1.9,
+    baseCost: 800000, costGrowth: 2,
     effect: (lvl) => `离线收益 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
     icon: 'offline', desc: '提升离线时的金币结算效率',
@@ -92,14 +92,14 @@ export const SKILLS: SkillConfig[] = [
   // 全局系
   {
     id: 'gravity', name: '重力调节', category: 'global', maxLevel: 30,
-    baseCost: 400, costGrowth: 1.8,
+    baseCost: 400, costGrowth: 2,
     effect: (lvl) => `下落速度 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
     icon: 'gravity', desc: '弹珠下落更快，结算更频繁',
   },
   {
     id: 'capacity', name: '弹珠容量', category: 'global', maxLevel: 30,
-    baseCost: 600, costGrowth: 1.9,
+    baseCost: 600, costGrowth: 2,
     effect: (lvl) => `同屏弹珠上限 +${(lvl * 5)}`,
     getValue: (lvl) => lvl * 5,
     icon: 'box', desc: '允许更多弹珠同时存在',
@@ -115,7 +115,7 @@ export const SKILLS: SkillConfig[] = [
   },
   {
     id: 'goldBonus', name: '金币加成', category: 'global', maxLevel: 50,
-    baseCost: 1500, costGrowth: 1.9,
+    baseCost: 1500, costGrowth: 2,
     effect: (lvl) => `结算金币 +${(lvl * 5)}%`,
     getValue: (lvl) => lvl * 0.05,
     icon: 'coin', desc: '所有弹珠结算金币提升',
@@ -139,7 +139,7 @@ export const SKILLS: SkillConfig[] = [
   },
   {
     id: 'wallBounce', name: '墙体反弹', category: 'global', maxLevel: 30,
-    baseCost: 1200, costGrowth: 1.8,
+    baseCost: 1200, costGrowth: 2,
     effect: (lvl) => `墙体弹力 +${(lvl * 8)}%`,
     getValue: (lvl) => lvl * 0.08,
     icon: 'pin', desc: '弹珠撞左右墙体时弹力提升，更易在场景内反弹',
@@ -147,7 +147,7 @@ export const SKILLS: SkillConfig[] = [
   },
   {
     id: 'wallBonus', name: '墙体金币', category: 'global', maxLevel: 30,
-    baseCost: 2500, costGrowth: 1.9,
+    baseCost: 2500, costGrowth: 2,
     effect: (lvl) => `撞墙结算 +${(lvl * 4)}% 当前数值`,
     getValue: (lvl) => lvl * 0.04,
     icon: 'coin', desc: '弹珠撞墙时按当前数值获得额外金币',
@@ -156,35 +156,35 @@ export const SKILLS: SkillConfig[] = [
   // 主动技能
   {
     id: 'frenzy', name: '狂热', category: 'active', maxLevel: 1,
-    baseCost: 5000, costGrowth: 1,
+    baseCost: 5000, costGrowth: 2,
     effect: () => '10 秒内手动投放不消耗间隔且连击×2',
     cooldown: 60, duration: 10,
     icon: 'frenzy', desc: '短时间内爆发式手动投弹',
   },
   {
     id: 'goldenRain', name: '黄金雨', category: 'active', maxLevel: 1,
-    baseCost: 20000, costGrowth: 1,
+    baseCost: 20000, costGrowth: 2,
     effect: () => '8 秒内所有弹珠视为黄金弹（×1.5）',
     cooldown: 120, duration: 8,
     icon: 'rain', desc: '弹珠全部变成黄金弹',
   },
   {
     id: 'blast', name: '爆破', category: 'active', maxLevel: 1,
-    baseCost: 8000, costGrowth: 1,
+    baseCost: 8000, costGrowth: 2,
     effect: () => '立即结算屏幕上所有弹珠',
     cooldown: 90, duration: 0,
     icon: 'blast', desc: '一键回收全部弹珠',
   },
   {
     id: 'slowdown', name: '时缓', category: 'active', maxLevel: 1,
-    baseCost: 12000, costGrowth: 1,
+    baseCost: 12000, costGrowth: 2,
     effect: () => '12 秒内物理时间减半，便于观察',
     cooldown: 150, duration: 12,
     icon: 'snail', desc: '减速世界，看清每次运算',
   },
   {
     id: 'rhythm', name: '律动', category: 'active', maxLevel: 1,
-    baseCost: 25000, costGrowth: 1,
+    baseCost: 25000, costGrowth: 2,
     effect: () => '15 秒内自动器效率翻倍',
     cooldown: 180, duration: 15,
     icon: 'rhythm', desc: '自动投弹器超速运转',

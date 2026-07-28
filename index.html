@@ -102,6 +102,25 @@
     .stat-chip.crystal { color: var(--crystal); border-color: rgba(77, 214, 193, 0.3); }
     .stat-chip.ball { color: var(--accent-2); }
     .stat-chip .val { font-weight: 600; min-width: 24px; text-align: right; }
+    .stat-chip .rate { font-size: 10px; color: var(--muted); font-weight: 500; margin-left: 3px; letter-spacing: 0.3px; transition: color 0.2s; }
+    .stat-chip .rate.has { color: var(--good); }
+
+    /* 金币位数进度条（金币左侧） */
+    .digit-progress {
+      background: var(--panel);
+      border: 1px solid rgba(245, 197, 66, 0.3);
+      padding: 5px 9px;
+      border-radius: var(--radius-sm);
+      display: flex; flex-direction: column; gap: 3px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-sm);
+      min-width: 74px;
+    }
+    .dp-head { display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: var(--muted); gap: 6px; }
+    .dp-head .dp-target { color: var(--gold); font-weight: 600; }
+    .dp-track { width: 100%; height: 5px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+    .dp-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); border-radius: 3px; transition: width 0.25s ease; }
 
     #chapter-tag {
       margin-left: auto;
@@ -144,6 +163,24 @@
     }
     .icon-btn:hover { background: var(--btn-hover); border-color: var(--border-strong); }
     .icon-btn svg { width: 14px; height: 14px; }
+    .icon-btn.prestige-btn {
+      background: rgba(125, 136, 150, 0.1);
+      border-color: rgba(125, 136, 150, 0.3);
+      color: var(--muted);
+    }
+    .icon-btn.prestige-btn:hover { background: rgba(125, 136, 150, 0.18); }
+    .icon-btn.prestige-btn.ready {
+      background: rgba(245, 197, 66, 0.22);
+      border-color: var(--gold);
+      color: var(--gold);
+      font-weight: 600;
+      animation: prestigePulse 1.6s ease-in-out infinite;
+    }
+    .icon-btn.prestige-btn.ready:hover { background: rgba(245, 197, 66, 0.32); }
+    @keyframes prestigePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245, 197, 66, 0.45); }
+      50% { box-shadow: 0 0 0 5px rgba(245, 197, 66, 0); }
+    }
 
     /* ===== 底部商店面板 ===== */
     .side-panel {
@@ -454,6 +491,8 @@
       #top-bar { gap: 6px; }
       .stat-chip { padding: 5px 8px; font-size: 11px; }
       .stat-chip svg { width: 12px; height: 12px; }
+      .digit-progress { min-width: 58px; padding: 4px 7px; }
+      .dp-head { font-size: 9px; }
       #chapter-tag { display: none; }
       .side-panel {
         width: 100%;
@@ -472,6 +511,7 @@
     /* 极小屏 */
     @media (max-width: 360px) {
       .stat-chip { padding: 4px 6px; font-size: 10px; }
+      .digit-progress { display: none; }
       #top-bar { gap: 4px; }
     }
     /* 横屏短屏：底部面板更矮避免挤压游戏区 */
@@ -506,10 +546,15 @@
 
   <div id="hud" style="display:none">
     <div id="top-bar">
-      <div class="stat-chip gold"><span id="icon-gold"></span>金币 <span id="gold-val" class="val">0</span></div>
+      <div id="gold-digit-progress" class="digit-progress" title="当前金币距离下一个位数的进度">
+        <div class="dp-head"><span>下一位</span><span id="dp-target" class="dp-target">10</span></div>
+        <div class="dp-track"><div id="dp-fill" class="dp-fill" style="width:0%"></div></div>
+      </div>
+      <div class="stat-chip gold"><span id="icon-gold"></span>金币 <span id="gold-val" class="val">0</span><span id="gold-rate" class="rate">+0/s</span></div>
       <div class="stat-chip crystal"><span id="icon-crystal"></span>数晶 <span id="crystal-val" class="val">0</span></div>
       <div class="stat-chip ball"><span id="icon-ball"></span>初始 <span id="ball-val" class="val">1</span></div>
       <div id="chapter-tag"><span id="icon-chapter"></span><span id="chapter-name">第 1 章</span><div class="progress"><div id="chapter-progress" class="progress-fill" style="width:0%"></div></div></div>
+      <button id="btn-prestige" class="icon-btn prestige-btn" title="清零进入下一个周目"><span id="icon-prestige2"></span>归零</button>
       <button id="btn-menu" class="icon-btn"><span id="icon-menu"></span>菜单</button>
     </div>
 

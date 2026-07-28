@@ -1,6 +1,7 @@
 // DOM 层 HUD：现代深色像素 UI，SVG 图标，事件驱动更新
 
 import { GameState, formatNum, toBig, fromBig } from '../systems/GameState';
+import { bigLog10Abs, SCALE } from '../systems/BigNum';
 import { SaveSystem } from '../systems/SaveSystem';
 import { bus, EVT } from '../systems/EventBus';
 import { PEG_TYPES, PEG_MAP } from '../data/pegs';
@@ -15,6 +16,11 @@ export class HUD {
   private shopTab: 'pegs' | 'autos' | 'skills' | 'global' = 'pegs';
   private onPlacementSelect?: (typeId: string | null) => void;
   private selectedPegType: string | null = null;
+
+  // 实时金币获取速率：基于 totalGold 的 5s 滚动窗口
+  private rateSamples: { t: number; total: number }[] = [];
+  private rateTimer: number | null = null;
+  private rateLastTotal = 0;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -35,11 +41,13 @@ export class HUD {
     this.bindModals();
     this.bindEvents();
     this.updateHeader();
+    this.startRateTracking();
     this.updateChapterProgress();
   }
 
   unmount() {
     this.root.style.display = 'none';
+    this.stopRateTracking();
   }
 
   private injectIcons() {
@@ -48,7 +56,7 @@ export class HUD {
       'icon-chapter': 'chapter', 'icon-menu': 'menu', 'icon-pegs': 'pegs',
       'icon-prestige': 'prestige', 'icon-ending': 'ending',
       'icon-save': 'save', 'icon-save2': 'save', 'icon-home': 'home', 'icon-trash': 'trash',
-      'icon-pegs-dup': 'pegs',
+      'icon-pegs-dup': 'pegs', 'icon-prestige2': 'prestige',
     };
     for (const [id, key] of Object.entries(map)) {
       const el = document.getElementById(id);
@@ -61,6 +69,30 @@ export class HUD {
       // 归零弹窗只在 _ready 时显示，菜单按钮保持原样
       document.getElementById('modal-menu')!.classList.add('open');
     });
+    document.getElementById('btn-prestige')!.addEventListener('click', () => {
+      this.handlePrestigeClick();
+    });
+  }
+
+  /** 归零按钮：达标则打开归零试炼弹窗，未达标则提示进度 */
+  private handlePrestigeClick() {
+    const ch = GameState.chapter;
+    if (GameState.save.totalGold >= ch.targetGold) {
+      this.showPrestigeModal();
+      return;
+    }
+    const tg = fromBig(ch.targetGold);
+    const cur = fromBig(GameState.save.totalGold);
+    const pct = isFinite(tg) && tg > 0 ? Math.min(99.9, (cur / tg) * 100) : 0;
+    this.showToast(`归零进度 ${pct.toFixed(1)}%`, 'prestige');
+  }
+
+  /** 根据是否达到归零条件切换按钮高亮态 */
+  private updatePrestigeButtonState() {
+    const btn = document.getElementById('btn-prestige');
+    if (!btn) return;
+    const ready = GameState.save.totalGold >= GameState.chapter.targetGold;
+    btn.classList.toggle('ready', ready);
   }
 
   private bindPanelToggles() {
@@ -127,6 +159,8 @@ export class HUD {
 
   private bindEvents() {
     bus.on(EVT.GOLD_CHANGED, () => this.updateHeader());
+    bus.on(EVT.GOLD_CHANGED, () => this.updateRate());
+    bus.on(EVT.GOLD_CHANGED, () => this.updatePrestigeButtonState());
     bus.on(EVT.CRYSTAL_CHANGED, () => this.updateHeader());
     bus.on(EVT.BALL_VALUE_CHANGED, () => this.updateHeader());
     bus.on(EVT.CHAPTER_CHANGED, () => this.updateChapterProgress());
@@ -143,6 +177,86 @@ export class HUD {
     document.getElementById('gold-val')!.textContent = formatNum(GameState.gold);
     document.getElementById('crystal-val')!.textContent = formatNum(GameState.crystal);
     document.getElementById('ball-val')!.textContent = formatNum(GameState.ballInitialValue);
+    this.updateDigitProgress();
+  }
+
+  // ===== 实时金币获取速率 =====
+  private startRateTracking() {
+    this.rateLastTotal = fromBig(GameState.save.totalGold);
+    this.rateSamples = [{ t: performance.now(), total: this.rateLastTotal }];
+    if (this.rateTimer !== null) clearInterval(this.rateTimer);
+    this.rateTimer = window.setInterval(() => this.updateRate(), 250);
+    this.updateRate();
+  }
+
+  private stopRateTracking() {
+    if (this.rateTimer !== null) {
+      clearInterval(this.rateTimer);
+      this.rateTimer = null;
+    }
+  }
+
+  /** 基于 totalGold 的 5s 滚动窗口计算金币/秒；窗口内无收益时速率平滑衰减至 0 */
+  private updateRate() {
+    const now = performance.now();
+    let total = fromBig(GameState.save.totalGold);
+    // 归零/换章会重置 totalGold → 清空样本重新计量
+    if (!isFinite(total) || total < this.rateLastTotal) {
+      this.rateSamples = [];
+      this.rateLastTotal = isFinite(total) ? total : 0;
+    } else {
+      this.rateLastTotal = total;
+    }
+    this.rateSamples.push({ t: now, total: this.rateLastTotal });
+    const WINDOW = 5000;
+    while (this.rateSamples.length > 2 && now - this.rateSamples[0].t > WINDOW) {
+      this.rateSamples.shift();
+    }
+    let rate = 0;
+    if (this.rateSamples.length >= 2) {
+      const first = this.rateSamples[0];
+      const dt = (now - first.t) / 1000;
+      if (dt > 0.15) rate = (this.rateLastTotal - first.total) / dt;
+    }
+    const el = document.getElementById('gold-rate');
+    if (el) {
+      el.textContent = this.formatRate(rate);
+      el.classList.toggle('has', rate > 0.01);
+    }
+  }
+
+  private formatRate(r: number): string {
+    if (!isFinite(r) || r <= 0) return '+0/s';
+    if (r < 1000) return '+' + (r < 10 ? r.toFixed(1) : Math.floor(r)) + '/s';
+    return '+' + formatNum(toBig(r)) + '/s';
+  }
+
+  // ===== 金币位数进度条 =====
+  /** 当前金币距离下一个 10 的幂（位数）的进度，0~100% */
+  private updateDigitProgress() {
+    const fillEl = document.getElementById('dp-fill');
+    const targetEl = document.getElementById('dp-target');
+    if (!fillEl || !targetEl) return;
+    const gold = GameState.gold;
+    if (gold <= 0n) {
+      fillEl.style.width = '0%';
+      targetEl.textContent = '10';
+      return;
+    }
+    // log10(原始值) = log10(缩放值) - log10(SCALE)
+    const log10Gold = bigLog10Abs(gold) - Math.log10(Number(SCALE));
+    const floor = Math.floor(log10Gold);
+    const frac = log10Gold - floor; // 当前位数内的对数余量 0~1
+    // 转为数值空间进度：(10^frac - 1) / 9，越接近下一位数越接近 100%
+    const progress = (Math.pow(10, frac) - 1) / 9;
+    fillEl.style.width = `${Math.min(100, Math.max(0, progress * 100))}%`;
+    targetEl.textContent = this.formatPow10(floor + 1);
+  }
+
+  private formatPow10(pow: number): string {
+    if (pow <= 0) return '10';
+    if (pow <= 15) return formatNum(toBig(Math.pow(10, pow)));
+    return '10^' + pow;
   }
 
   private updateChapterProgress() {
@@ -156,6 +270,7 @@ export class HUD {
       progress = isFinite(tg) && tg > 0 ? Math.min(1, fromBig(GameState.save.totalGold) / tg) : 0;
     }
     document.getElementById('chapter-progress')!.style.width = `${progress * 100}%`;
+    this.updatePrestigeButtonState();
   }
 
   private renderShop() {
