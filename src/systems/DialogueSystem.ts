@@ -36,6 +36,9 @@ export class DialogueSystem {
   private onDone?: () => void;
   private bound = false;
   private triggerCb?: (...args: unknown[]) => void;
+  private typeTimer: number | null = null;
+  private typing = false;
+  private fullText = '';
 
   /** 挂载 DOM 节点（首次创建） */
   private ensureRoot() {
@@ -81,6 +84,7 @@ export class DialogueSystem {
       bus.off(EVT.DIALOGUE_TRIGGER, this.triggerCb);
       this.triggerCb = undefined;
     }
+    this.stopTyping();
     if (this.root) {
       this.root.classList.remove('open');
       this.root.remove();
@@ -101,9 +105,13 @@ export class DialogueSystem {
     this.renderLine();
   }
 
-  /** 推进到下一行，最后一行结束则关闭 */
+  /** 推进到下一行，最后一行结束则关闭。打字中点击则先完整显示当前行。 */
   private advance() {
     if (!this.current) return;
+    if (this.typing) {
+      this.finishTyping();
+      return;
+    }
     this.lineIdx++;
     if (this.lineIdx >= this.current.lines.length) {
       this.end();
@@ -118,10 +126,25 @@ export class DialogueSystem {
     GameState.markDialogueSeen(id);
     this.current = null;
     this.lineIdx = 0;
+    this.stopTyping();
     this.root?.classList.remove('open');
     const cb = this.onDone;
     this.onDone = undefined;
     cb?.();
+  }
+
+  private stopTyping() {
+    if (this.typeTimer !== null) {
+      clearInterval(this.typeTimer);
+      this.typeTimer = null;
+    }
+    this.typing = false;
+  }
+
+  private finishTyping() {
+    this.stopTyping();
+    const textEl = this.root?.querySelector('#dialogue-text') as HTMLElement;
+    if (textEl) textEl.textContent = this.fullText;
   }
 
   private renderLine() {
@@ -132,7 +155,6 @@ export class DialogueSystem {
     const portraitEl = this.root.querySelector('#dialogue-portrait') as HTMLElement;
 
     speakerEl.textContent = SPEAKER_NAMES[line.speaker] ?? '旁白';
-    textEl.textContent = line.text;
 
     // 立绘切换
     const portraitFile = line.portrait ? PORTRAIT_FILES[line.portrait] : undefined;
@@ -149,6 +171,21 @@ export class DialogueSystem {
     // 旁白样式
     speakerEl.classList.toggle('narrator', line.speaker === 'narrator');
     textEl.classList.toggle('narrator', line.speaker === 'narrator');
+
+    // 打字机效果：逐字显示
+    this.stopTyping();
+    this.fullText = line.text;
+    textEl.textContent = '';
+    this.typing = true;
+    let i = 0;
+    this.typeTimer = window.setInterval(() => {
+      if (i >= this.fullText.length) {
+        this.stopTyping();
+        return;
+      }
+      textEl.textContent += this.fullText[i];
+      i++;
+    }, 30);
   }
 
   /** 当前是否正在播放对话 */

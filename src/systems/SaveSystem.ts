@@ -24,7 +24,7 @@ const VERSION = '1.4.0';
 export const DEFAULT_SAVE: SaveData = {
   version: VERSION,
   chapterId: 1,
-  gold: 0n,
+  gold: toBig(100), // 初始 100 金币（缩放值 10000n）
   totalGold: 0n,
   crystal: 0n,
   ballInitialValue: toBig(1), // 100n，代表原值 1
