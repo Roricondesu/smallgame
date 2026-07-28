@@ -186,7 +186,6 @@
     .side-panel {
       position: fixed;
       left: 50%;
-      transform: translateX(-50%);
       bottom: 0;
       width: min(560px, calc(100vw - 24px));
       height: 70vh;
@@ -202,12 +201,12 @@
       box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
       display: flex;
       flex-direction: column;
-      /* 收起态：下移自身高度减去标题条高度，只露标题条在屏幕底部 */
-      transform: translateX(-50%) translateY(calc(70vh - 44px));
+      /* 收起态：向下平移自身高度减去标题条高度（用 100% 相对自身，避免 vh 与 max-height 不一致）*/
+      transform: translateX(-50%) translateY(calc(100% - 44px));
       transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
       z-index: 15;
     }
-    /* 展开态：向上滑出 */
+    /* 展开态：复位 */
     .side-panel:not(.collapsed) {
       transform: translateX(-50%) translateY(0);
     }
@@ -518,7 +517,7 @@
     /* 手机横屏：抽屉占满宽度，高度受限 */
     @media (max-width: 900px) {
       .side-panel { width: calc(100vw - 24px); height: 60vh; }
-      .side-panel { transform: translateX(-50%) translateY(calc(60vh - 48px)); }
+      .side-panel { transform: translateX(-50%) translateY(calc(100% - 48px)); }
       .side-panel:not(.collapsed) { transform: translateX(-50%) translateY(0); }
       .stat-chip { padding: 6px 10px; font-size: 12px; }
       #chapter-tag { font-size: 11px; padding: 6px 10px; }
@@ -564,7 +563,7 @@
       .icon-btn svg { width: 15px; height: 15px; }
       .icon-btn span:not([id^="icon"]) { display: none; }
 
-      /* 抽屉：全宽 + 安全区适配 */
+      /* 抽屉：全宽 + 安全区适配（100% 相对自身高度，与 max-height 协同正确）*/
       .side-panel {
         width: 100vw;
         height: 78vh;
@@ -573,7 +572,7 @@
         border-left: none;
         border-right: none;
         padding-bottom: env(safe-area-inset-bottom);
-        transform: translateX(-50%) translateY(calc(78vh - 52px - env(safe-area-inset-bottom)));
+        transform: translateX(-50%) translateY(calc(100% - 52px));
       }
       .side-panel:not(.collapsed) {
         transform: translateX(-50%) translateY(0);
@@ -668,7 +667,7 @@
       .icon-btn svg { width: 14px; height: 14px; }
       /* 抽屉略矮 */
       .side-panel { height: 80vh; }
-      .side-panel { transform: translateX(-50%) translateY(calc(80vh - 50px - env(safe-area-inset-bottom))); }
+      .side-panel { transform: translateX(-50%) translateY(calc(100% - 50px)); }
       .side-panel:not(.collapsed) { transform: translateX(-50%) translateY(0); }
       .panel-title { padding: 14px 12px; font-size: 13px; min-height: 50px; }
       /* 商品卡片更紧凑 */
@@ -684,7 +683,7 @@
       .side-panel {
         height: 85vh;
         max-height: calc(100vh - env(safe-area-inset-top) - 20px);
-        transform: translateX(-50%) translateY(calc(85vh - 48px));
+        transform: translateX(-50%) translateY(calc(100% - 48px));
       }
       .side-panel:not(.collapsed) { transform: translateX(-50%) translateY(0); }
       /* 横屏短屏压缩顶部状态栏 */
