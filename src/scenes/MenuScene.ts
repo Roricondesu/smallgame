@@ -25,9 +25,6 @@ export class MenuScene extends Phaser.Scene {
     const W = this.scale.width, H = this.scale.height;
     this.cameras.main.setBackgroundColor('#050709');
 
-    // 背景星点
-    this.makeStars(W, H);
-
     // 右侧钉子（仅桌面端布局区域）
     this.makePegs(W, H);
 
@@ -43,19 +40,8 @@ export class MenuScene extends Phaser.Scene {
       this.pegs = [];
       this.balls.forEach((b) => b.img.destroy());
       this.balls = [];
-      this.makeStars(gameSize.width, gameSize.height);
       this.makePegs(gameSize.width, gameSize.height);
     });
-  }
-
-  private makeStars(W: number, H: number) {
-    const bg = this.add.graphics();
-    for (let i = 0; i < 140; i++) {
-      const c = Math.random() > 0.75 ? 0xf5c542 : 0xffffff;
-      bg.fillStyle(c, Math.random() * 0.5 + 0.1);
-      bg.fillRect(Math.random() * W, Math.random() * H, 1, 1);
-    }
-    bg.setDepth(-1);
   }
 
   /** 右侧区域布置若干钉子 */
