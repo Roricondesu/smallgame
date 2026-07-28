@@ -42,6 +42,9 @@ const PLACEHOLDER_RADIUS = 5;
 const BALL_RADIUS = 8;
 // 弹力系数（0=不弹，1=完全弹性）
 const RESTITUTION = 0.7;
+// 设计尺寸：游戏内容按此坐标系渲染，camera 缩放适配实际画布
+const DESIGN_W = BALANCE.gridCols * BALANCE.cellSize; // 504
+const DESIGN_H = 900; // 含顶部投放区 + 网格 + 底部结算区
 
 export class GameScene extends Phaser.Scene {
   private balls: Ball[] = [];
@@ -141,12 +144,11 @@ export class GameScene extends Phaser.Scene {
     // 统一应用布局：绘制网格背景、定位结算槽、重建墙体物理体、设置 Matter 边界
     this.applyLayout();
 
-    // 连击显示 & 狂热 overlay（applyLayout 会跟随画布尺寸重定位）
-    const W = this.scale.width, H = this.scale.height;
-    this.comboDisplay = this.add.text(W - 20, 80, '', {
+    // 连击显示 & 狂热 overlay（基于设计坐标系，applyLayout 会跟随重定位）
+    this.comboDisplay = this.add.text(DESIGN_W - 20, 80, '', {
       fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '16px', color: '#f0b429',
     }).setOrigin(1, 0).setAlpha(0);
-    this.frenzyOverlay = this.add.rectangle(0, 0, W, H, 0xf0b429, 0).setOrigin(0).setDepth(99);
+    this.frenzyOverlay = this.add.rectangle(0, 0, DESIGN_W, DESIGN_H, 0xf0b429, 0).setOrigin(0).setDepth(99);
 
     // 加载钉子（真实）
     const occupied = new Set<string>();
@@ -168,9 +170,10 @@ export class GameScene extends Phaser.Scene {
 
     // 输入事件：点击网格区域内任意位置放球；放置模式下则放置钉子
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.y > this.settleY + 40) return;
+      const wx = pointer.worldX, wy = pointer.worldY;
+      if (wy > this.settleY + 40) return;
       if (this.placementMode.typeId) {
-        const grid = this.pixelToGrid(pointer.x, pointer.y);
+        const grid = this.pixelToGrid(wx, wy);
         if (grid) {
           const peg = GameState.placePeg(this.placementMode.typeId, grid.gx, grid.gy);
           if (peg) {
@@ -182,7 +185,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       // 非放置模式：点击放球
-      this.dropBallManual(pointer.x);
+      this.dropBallManual(wx);
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
@@ -248,21 +251,26 @@ export class GameScene extends Phaser.Scene {
     this.events.on('pause', () => GameState.saveGame());
   }
 
-  // 根据当前画布尺寸计算网格布局参数：12×16 网格水平居中，垂直留出顶部投放区与底部结算区
+  // 基于固定设计尺寸计算网格布局：12×16 网格水平居中，垂直留出顶部投放区与底部结算区
   private computeLayout() {
-    const W = this.scale.width, H = this.scale.height;
     const gridWidth = BALANCE.gridCols * BALANCE.cellSize;
     const gridH = BALANCE.gridRows * BALANCE.cellSize;
-    this.gridX = (W - gridWidth) / 2;
-    this.gridY = BALANCE.pegGridTopOffset;
+    this.gridX = (DESIGN_W - gridWidth) / 2;
     this.dropZoneH = 70;
+    // 顶部投放区 + 网格 + 底部结算区，垂直居中于设计高度
+    const totalContent = this.dropZoneH + gridH + 80;
+    const topPad = Math.max(BALANCE.pegGridTopOffset, (DESIGN_H - totalContent) / 2 + this.dropZoneH);
+    this.gridY = topPad;
     this.settleY = this.gridY + gridH + 10;
-    // 竖屏空间富裕时，把网格整体下移使顶部/底部留白更均衡
-    if (H > 800) {
-      const extra = (H - this.dropZoneH - gridH - 120) / 2;
-      this.gridY = Math.max(BALANCE.pegGridTopOffset, this.dropZoneH + 10 + extra);
-      this.settleY = this.gridY + gridH + 10;
-    }
+  }
+
+  // 根据实际画布尺寸缩放 camera，使设计区域完整可见并居中
+  private fitCamera() {
+    const W = this.scale.width, H = this.scale.height;
+    const zoom = Math.min(W / DESIGN_W, H / DESIGN_H);
+    this.cameras.main.setZoom(zoom);
+    // 居中：scroll 使设计区域中心对齐画布中心
+    this.cameras.main.centerOn(DESIGN_W / 2, DESIGN_H / 2);
   }
 
   // 重新应用布局：绘制网格背景、定位结算槽、重建墙体、重定位钉子、更新 overlay
@@ -272,10 +280,12 @@ export class GameScene extends Phaser.Scene {
     this.repositionSettleSlots();
     this.rebuildWalls();
     this.repositionPegs();
-    // Matter 世界边界跟随画布（左右挡墙，顶部/底部开放）
-    this.matter.world.setBounds(0, 0, this.scale.width, this.scale.height, 1, true, true, false, false);
-    if (this.frenzyOverlay) this.frenzyOverlay.setSize(this.scale.width, this.scale.height);
-    if (this.comboDisplay) this.comboDisplay.setPosition(this.scale.width - 20, 80);
+    // Matter 世界边界基于设计坐标系（左右挡墙，顶部/底部开放）
+    this.matter.world.setBounds(0, 0, DESIGN_W, DESIGN_H, 1, true, true, false, false);
+    if (this.frenzyOverlay) this.frenzyOverlay.setSize(DESIGN_W, DESIGN_H);
+    if (this.comboDisplay) this.comboDisplay.setPosition(DESIGN_W - 20, 80);
+    // 根据画布尺寸缩放 camera，使设计区域完整可见
+    this.fitCamera();
   }
 
   // 绘制六边形蜂窝点阵 + 定位半透明底板
@@ -738,7 +748,7 @@ export class GameScene extends Phaser.Scene {
   private updatePlacementCursor(pointer?: Phaser.Input.Pointer) {
     if (!this.placementCursor || !this.placementMode.typeId) return;
     const p = pointer ?? this.input.activePointer;
-    this.placementCursor.setPosition(p.x, p.y);
+    this.placementCursor.setPosition(p.worldX, p.worldY);
   }
 
   // ===== 自动器 =====
@@ -749,7 +759,7 @@ export class GameScene extends Phaser.Scene {
     this.autoAccumulator += 0.1 * rate * rhythmMul;
     while (this.autoAccumulator >= 1) {
       this.autoAccumulator -= 1;
-      const x = GameState.getSkillLevel('smartDrop') > 0 ? this.scale.width / 2 : (0.2 + Math.random() * 0.6) * this.scale.width;
+      const x = GameState.getSkillLevel('smartDrop') > 0 ? DESIGN_W / 2 : (0.2 + Math.random() * 0.6) * DESIGN_W;
       this.spawnBall(x, 30, GameState.ballInitialValue, 'auto');
       GameState.onBallDropped('auto');
     }
