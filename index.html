@@ -511,40 +511,189 @@
     ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
     /* ===== 响应式适配 ===== */
-    /* 平板 */
+    /* 平板/小桌面：抽屉略窄 */
     @media (max-width: 1024px) {
-      .side-panel { width: 220px; }
+      .side-panel { width: min(480px, calc(100vw - 24px)); }
     }
-    /* 手机横屏 */
+    /* 手机横屏：抽屉占满宽度，高度受限 */
     @media (max-width: 900px) {
-      .side-panel { width: 200px; top: 80px; padding: 10px; }
-      #left-panel { left: 8px; }
+      .side-panel { width: calc(100vw - 24px); height: 60vh; }
+      .side-panel { transform: translateX(-50%) translateY(calc(60vh - 48px)); }
+      .side-panel:not(.collapsed) { transform: translateX(-50%) translateY(0); }
       .stat-chip { padding: 6px 10px; font-size: 12px; }
       #chapter-tag { font-size: 11px; padding: 6px 10px; }
     }
-    /* 手机竖屏 */
+    /* 手机竖屏：全面优化 */
     @media (max-width: 640px) {
-      #top-bar { gap: 6px; }
-      .stat-chip { padding: 5px 8px; font-size: 11px; }
-      .stat-chip svg { width: 12px; height: 12px; }
-      .digit-progress { min-width: 58px; padding: 4px 7px; }
-      .dp-head { font-size: 9px; }
+      /* 顶部状态栏：强制单行，避免换行遮挡游戏 */
+      #top-bar {
+        gap: 5px;
+        top: max(8px, env(safe-area-inset-top));
+        left: 8px; right: 8px;
+        flex-wrap: nowrap;
+        overflow: hidden;
+      }
+      .stat-chip {
+        padding: 5px 8px;
+        font-size: 11px;
+        gap: 4px;
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+      .stat-chip svg { width: 11px; height: 11px; }
+      .stat-chip .val { min-width: 18px; }
+      .stat-chip .rate { font-size: 9px; margin-left: 2px; }
+      /* 位数进度条更紧凑 */
+      .digit-progress {
+        min-width: 52px;
+        padding: 4px 6px;
+        gap: 2px;
+        flex-shrink: 0;
+      }
+      .dp-head { font-size: 8px; gap: 4px; }
+      .dp-track { height: 4px; }
+      /* 章节标签隐藏，腾出空间 */
       #chapter-tag { display: none; }
-      .side-panel { width: calc(100vw - 24px); }
-      .icon-btn { padding: 6px 8px; font-size: 11px; }
+      /* 按钮：只显示图标，触摸热区足够 */
+      .icon-btn {
+        padding: 7px 9px;
+        font-size: 0;
+        gap: 0;
+        flex-shrink: 0;
+      }
+      .icon-btn svg { width: 15px; height: 15px; }
       .icon-btn span:not([id^="icon"]) { display: none; }
-      .modal { padding: 16px; }
-      .modal h3 { font-size: 16px; }
+
+      /* 抽屉：全宽 + 安全区适配 */
+      .side-panel {
+        width: 100vw;
+        height: 78vh;
+        max-height: calc(100vh - env(safe-area-inset-top) - 60px);
+        border-radius: 14px 14px 0 0;
+        border-left: none;
+        border-right: none;
+        padding-bottom: env(safe-area-inset-bottom);
+        transform: translateX(-50%) translateY(calc(78vh - 52px - env(safe-area-inset-bottom)));
+      }
+      .side-panel:not(.collapsed) {
+        transform: translateX(-50%) translateY(0);
+      }
+      /* 标题条：触摸热区 52px */
+      .panel-title {
+        padding: 16px 16px;
+        font-size: 14px;
+        min-height: 52px;
+      }
+      .panel-title svg { width: 16px; height: 16px; }
+      .collapse-btn { font-size: 14px; padding: 4px 8px; }
+      .panel-body { padding: 10px 12px 12px; }
+
+      /* tab 按钮：触摸热区增大 */
+      .tab-row { gap: 5px; margin-bottom: 10px; }
+      .tab-btn {
+        padding: 9px 4px;
+        font-size: 12px;
+        min-height: 38px;
+      }
+
+      /* 商品卡片：触控优化 */
+      #shop-list { grid-template-columns: 1fr !important; gap: 8px; }
+      .shop-item, .skill-item {
+        padding: 12px;
+        margin-bottom: 0;
+      }
+      .item-head { gap: 10px; margin-bottom: 6px; }
+      .item-icon { width: 32px; height: 32px; }
+      .item-icon svg { width: 18px; height: 18px; }
+      .item-name { font-size: 14px; }
+      .item-level { font-size: 11px; padding: 3px 9px; }
+      .item-desc { font-size: 12px; margin: 5px 0 8px; }
+      .item-cost { font-size: 13px; }
+      .item-cost svg { width: 13px; height: 13px; }
+
+      /* 双按钮：高度增大便于触控 */
+      .item-actions { gap: 8px; margin-top: 8px; }
+      .mini-btn {
+        padding: 9px 6px;
+        font-size: 12px;
+        min-height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* 模态框：移动端接近全屏 */
+      .modal-overlay { padding: 12px; }
+      .modal {
+        width: 100%;
+        max-width: 100%;
+        padding: 18px 16px;
+        padding-bottom: max(18px, env(safe-area-inset-bottom));
+      }
+      .modal h3 { font-size: 17px; margin-bottom: 14px; }
+      .modal p { font-size: 13px; }
+      .modal-actions { gap: 8px; margin-top: 18px; }
+      .modal-actions .btn {
+        flex: 1;
+        padding: 11px 12px;
+        font-size: 13px;
+        justify-content: center;
+        min-height: 44px;
+      }
+
+      /* 存档卡片触控优化 */
+      .slot-card { padding: 14px; }
+      .slot-card-actions .btn {
+        min-height: 40px;
+        padding: 9px 10px;
+      }
+
+      /* toast：避开抽屉标题条 */
+      #toast {
+        bottom: calc(72px + env(safe-area-inset-bottom));
+        font-size: 12px;
+        padding: 9px 16px;
+        max-width: 88vw;
+      }
     }
-    /* 极小屏 */
+    /* 极小屏（≤360px）：进一步压缩 */
     @media (max-width: 360px) {
-      .stat-chip { padding: 4px 6px; font-size: 10px; }
+      #top-bar { gap: 4px; left: 6px; right: 6px; }
+      .stat-chip { padding: 4px 6px; font-size: 10px; gap: 3px; }
+      .stat-chip svg { width: 10px; height: 10px; }
+      .stat-chip .rate { display: none; }
+      /* 极小屏隐藏位数进度条，腾出空间 */
       .digit-progress { display: none; }
-      #top-bar { gap: 4px; }
+      .icon-btn { padding: 6px 8px; }
+      .icon-btn svg { width: 14px; height: 14px; }
+      /* 抽屉略矮 */
+      .side-panel { height: 80vh; }
+      .side-panel { transform: translateX(-50%) translateY(calc(80vh - 50px - env(safe-area-inset-bottom))); }
+      .side-panel:not(.collapsed) { transform: translateX(-50%) translateY(0); }
+      .panel-title { padding: 14px 12px; font-size: 13px; min-height: 50px; }
+      /* 商品卡片更紧凑 */
+      .shop-item, .skill-item { padding: 10px; }
+      .item-icon { width: 28px; height: 28px; }
+      .item-name { font-size: 13px; }
+      .item-desc { font-size: 11px; }
+      .mini-btn { padding: 8px 4px; font-size: 11px; min-height: 36px; }
+      .tab-btn { padding: 8px 2px; font-size: 11px; }
     }
-    /* 横屏短屏：抽屉最大高度受限 */
+    /* 横屏短屏：抽屉高度更小，但仍可滚动 */
     @media (max-height: 500px) and (orientation: landscape) {
-      .side-panel { max-height: 85vh; }
+      .side-panel {
+        height: 85vh;
+        max-height: calc(100vh - env(safe-area-inset-top) - 20px);
+        transform: translateX(-50%) translateY(calc(85vh - 48px));
+      }
+      .side-panel:not(.collapsed) { transform: translateX(-50%) translateY(0); }
+      /* 横屏短屏压缩顶部状态栏 */
+      #top-bar { gap: 4px; top: max(4px, env(safe-area-inset-top)); }
+      .stat-chip { padding: 4px 8px; font-size: 11px; }
+      .digit-progress { min-width: 48px; padding: 3px 6px; }
+      .dp-head { font-size: 8px; }
+      .dp-track { height: 3px; }
+      #chapter-tag { display: none; }
     }
 
     /* 面板切换按钮（默认隐藏，移动端显示） */
