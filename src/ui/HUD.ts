@@ -64,12 +64,6 @@ export class HUD {
   }
 
   private bindPanelToggles() {
-    const shopBtn = document.getElementById('toggle-shop');
-    const leftPanel = document.getElementById('left-panel');
-    shopBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      leftPanel?.classList.toggle('open');
-    });
     // 面板标题折叠按钮（所有屏幕尺寸）
     document.querySelectorAll('.collapse-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -78,13 +72,6 @@ export class HUD {
         if (!targetId) return;
         document.getElementById(targetId)?.classList.toggle('collapsed');
       });
-    });
-    // 点击空白处收起移动端面板
-    document.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('#left-panel') && !target.closest('#toggle-shop') && !target.closest('.shop-item') && !target.closest('.skill-item')) {
-        if (window.innerWidth <= 640) leftPanel?.classList.remove('open');
-      }
     });
   }
 
