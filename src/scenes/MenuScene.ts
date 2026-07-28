@@ -1,4 +1,4 @@
-// 主菜单：标题、存档槽位选择、数晶商店
+// 主菜单：左侧纵向导航 + 右侧钉子下球动画
 
 import Phaser from 'phaser';
 import { GameState, formatNum, toBig } from '../systems/GameState';
@@ -6,85 +6,209 @@ import { SaveSystem, SLOT_COUNT } from '../systems/SaveSystem';
 import { CRYSTAL_UPGRADES } from '../data/chapters';
 import { svgIcon, type IconKey } from '../ui/icons';
 
+interface FallingBall {
+  img: Phaser.GameObjects.Image;
+  vx: number;
+  vy: number;
+}
+
 export class MenuScene extends Phaser.Scene {
+  private pegs: Phaser.GameObjects.Image[] = [];
+  private balls: FallingBall[] = [];
+  private dropTimer: Phaser.Time.TimerEvent | null = null;
+
   constructor() {
     super('Menu');
   }
 
   create() {
     const W = this.scale.width, H = this.scale.height;
-    this.cameras.main.setBackgroundColor('#0d1117');
+    this.cameras.main.setBackgroundColor('#050709');
 
     // 背景星点
+    this.makeStars(W, H);
+
+    // 右侧钉子（仅桌面端布局区域）
+    this.makePegs(W, H);
+
+    // 显示 HTML 菜单
+    this.showMenuUI();
+
+    // 每秒下落一个小球
+    this.startDropping(W, H);
+
+    // 窗口尺寸变化时重新布局
+    this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
+      this.pegs.forEach((p) => p.destroy());
+      this.pegs = [];
+      this.balls.forEach((b) => b.img.destroy());
+      this.balls = [];
+      this.makeStars(gameSize.width, gameSize.height);
+      this.makePegs(gameSize.width, gameSize.height);
+    });
+  }
+
+  private makeStars(W: number, H: number) {
     const bg = this.add.graphics();
-    for (let i = 0; i < 120; i++) {
-      const c = Math.random() > 0.7 ? 0xf0b429 : 0xffffff;
+    for (let i = 0; i < 140; i++) {
+      const c = Math.random() > 0.75 ? 0xf5c542 : 0xffffff;
       bg.fillStyle(c, Math.random() * 0.5 + 0.1);
       bg.fillRect(Math.random() * W, Math.random() * H, 1, 1);
     }
     bg.setDepth(-1);
-
-    this.add.text(W / 2, H * 0.15, '弹珠炼金术', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
-      fontSize: `${Math.min(56, Math.max(32, W * 0.07))}px`,
-      color: '#ffffff',
-      align: 'center',
-    }).setOrigin(0.5).setShadow(0, 2, 'rgba(0,0,0,0.6)', 6);
-
-    this.add.text(W / 2, H * 0.24, 'Pinball Alchemy', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
-      fontSize: `${Math.min(20, Math.max(12, W * 0.022))}px`,
-      color: '#f5c542',
-    }).setOrigin(0.5);
-
-    // 当前活动槽位状态
-    this.refreshActiveSlotHint();
-
-    this.makeBtn(W / 2, H * 0.55, '选择存档', () => this.showSlotPicker(), false, true);
-    this.makeBtn(W / 2, H * 0.65, '数晶商店', () => this.showCrystalShop());
-
-    this.add.text(W / 2, H - 20, 'v1.4.0 · 3 槽位存档 · 像素风物理弹珠挂机', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
-      fontSize: '11px',
-      color: '#484f58',
-    }).setOrigin(0.5);
   }
 
-  private activeSlotHintText?: Phaser.GameObjects.Text;
+  /** 右侧区域布置若干钉子 */
+  private makePegs(W: number, H: number) {
+    // 移动端不显示钉子（菜单居中），节省空间
+    if (W < 768) return;
+    const startX = W * 0.55;
+    const endX = W - 60;
+    const topY = H * 0.18;
+    const bottomY = H * 0.82;
+    const cols = 5, rows = 6;
+    const dx = (endX - startX) / (cols - 1);
+    const dy = (bottomY - topY) / (rows - 1);
+    const colors = [0x3fb950, 0xf0b429, 0xf85149, 0x79c0ff, 0xffa198];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        // 交错排列
+        const offsetX = r % 2 === 0 ? 0 : dx / 2;
+        const x = startX + c * dx + offsetX;
+        if (x > endX + 10) continue;
+        const y = topY + r * dy;
+        const color = colors[(r + c) % colors.length];
+        const peg = this.add.image(x, y, 'peg_placeholder');
+        peg.setTint(color);
+        peg.setAlpha(0.55);
+        peg.setScale(1.2);
+        peg.setDepth(1);
+        this.pegs.push(peg);
+      }
+    }
+  }
 
-  private refreshActiveSlotHint() {
-    if (this.activeSlotHintText) this.activeSlotHintText.destroy();
-    const W = this.scale.width;
+  /** 每秒生成一个小球，自顶向下下落并左右弹跳 */
+  private startDropping(W: number, _H: number) {
+    const spawn = () => {
+      if (W < 768) return;
+      const keys = ['ball_gold', 'ball_blue', 'ball_green', 'ball_purple', 'ball_rainbow'];
+      const key = keys[Math.floor(Math.random() * keys.length)];
+      const x = Phaser.Math.Between(W * 0.58, W - 80);
+      const y = -10;
+      const img = this.add.image(x, y, key);
+      img.setDepth(2);
+      const ball: FallingBall = {
+        img,
+        vx: Phaser.Math.Between(-30, 30),
+        vy: Phaser.Math.Between(40, 70),
+      };
+      this.balls.push(ball);
+    };
+    this.dropTimer = this.time.addEvent({
+      delay: 1000,
+      callback: spawn,
+      loop: true,
+    });
+    spawn();
+  }
+
+  update(_t: number, dtMs: number) {
+    const dt = dtMs / 1000;
+    const W = this.scale.width, H = this.scale.height;
+    const gravity = 380;
+    for (let i = this.balls.length - 1; i >= 0; i--) {
+      const b = this.balls[i];
+      b.vy += gravity * dt;
+      let nx = b.img.x + b.vx * dt;
+      const ny = b.img.y + b.vy * dt;
+      // 简易左右边界反弹（右侧区域）
+      const leftBound = W * 0.55;
+      const rightBound = W - 20;
+      if (nx < leftBound) { nx = leftBound; b.vx = Math.abs(b.vx) * 0.8; }
+      if (nx > rightBound) { nx = rightBound; b.vx = -Math.abs(b.vx) * 0.8; }
+      // 与钉子碰撞：简单距离检测，命中后向上反弹并改变水平方向
+      for (const peg of this.pegs) {
+        const ddx = nx - peg.x;
+        const ddy = ny - peg.y;
+        const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dist < 14) {
+          // 反弹
+          const angle = Math.atan2(ddy, ddx);
+          b.vx = Math.cos(angle) * 90;
+          b.vy = -Math.abs(Math.sin(angle) * 90) - 40;
+          nx = peg.x + Math.cos(angle) * 15;
+          break;
+        }
+      }
+      b.img.x = nx;
+      b.img.y = ny;
+      // 超出底部移除
+      if (b.img.y > H + 20) {
+        b.img.destroy();
+        this.balls.splice(i, 1);
+      }
+    }
+  }
+
+  // ===== HTML 菜单 =====
+  private showMenuUI() {
+    const ui = document.getElementById('menu-ui');
+    const footer = document.getElementById('menu-footer');
+    if (ui) ui.classList.remove('hidden');
+    if (footer) footer.style.display = 'block';
+    this.refreshSlotHint();
+    this.bindMenuLinks();
+  }
+
+  private hideMenuUI() {
+    const ui = document.getElementById('menu-ui');
+    const footer = document.getElementById('menu-footer');
+    if (ui) ui.classList.add('hidden');
+    if (footer) footer.style.display = 'none';
+  }
+
+  shutdown() {
+    this.hideMenuUI();
+    if (this.dropTimer) this.dropTimer.remove();
+  }
+
+  private refreshSlotHint() {
+    const el = document.getElementById('menu-slot-hint');
+    if (!el) return;
     const slot = GameState.slot;
     const meta = SaveSystem.getSlotMeta(slot);
-    const line = meta.exists
+    el.textContent = meta.exists
       ? `当前槽位 ${slot + 1} · 第 ${meta.chapterId} 章 · ${meta.chapterName}`
       : `当前槽位 ${slot + 1} · 空`;
-    this.activeSlotHintText = this.add.text(W / 2, this.scale.height * 0.40, line, {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
-      fontSize: `${Math.min(16, Math.max(12, W * 0.018))}px`,
-      color: '#4dd6c1',
-    }).setOrigin(0.5);
   }
 
-  private makeBtn(x: number, y: number, label: string, onClick: () => void, danger = false, primary = false) {
-    const w = Math.min(260, this.scale.width * 0.6), h = 44;
-    let fill = 0x21262d, stroke = 0x484f58;
-    let textColor = '#e6edf3';
-    if (danger) { fill = 0x1c2330; stroke = 0xf85149; textColor = '#f85149'; }
-    if (primary) { fill = 0xf5c542; stroke = 0xf5c542; textColor = '#000000'; }
-    const rect = this.add.rectangle(x, y, w, h, fill, 1).setStrokeStyle(1, stroke);
-    rect.setInteractive();
-    this.add.text(x, y, label, {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
-      fontSize: '15px',
-      color: textColor,
-    }).setOrigin(0.5);
-    rect.on('pointerover', () => {
-      rect.setFillStyle(danger ? 0x2d1b1b : (primary ? 0xffd966 : 0x30363d));
+  private bindMenuLinks() {
+    const links = document.querySelectorAll('.menu-link');
+    links.forEach((link) => {
+      // 避免重复绑定
+      if ((link as HTMLElement).dataset.bound === '1') return;
+      (link as HTMLElement).dataset.bound = '1';
+      link.addEventListener('click', () => {
+        const act = (link as HTMLElement).dataset.menu;
+        if (act === 'start') this.handleStart();
+        else if (act === 'slots') this.showSlotPicker();
+        else if (act === 'shop') this.showCrystalShop();
+        else if (act === 'settings') this.showSettings();
+        else if (act === 'about') this.showAbout();
+      });
     });
-    rect.on('pointerout', () => rect.setFillStyle(fill));
-    rect.on('pointerdown', onClick);
+  }
+
+  /** 开始游戏：当前槽位若已有存档则直接继续，否则进入选择存档 */
+  private handleStart() {
+    const meta = SaveSystem.getSlotMeta(GameState.slot);
+    if (meta.exists) {
+      GameState.loadSlot(GameState.slot);
+      this.scene.start('OfflineReport');
+    } else {
+      this.showSlotPicker();
+    }
   }
 
   // ===== 槽位选择 =====
@@ -162,22 +286,17 @@ export class MenuScene extends Phaser.Scene {
         if (confirm(`确定删除存档 ${slot + 1}？此操作不可恢复。`)) {
           SaveSystem.wipeSlot(slot);
           this.renderSlotList(overlay);
-          this.refreshActiveSlotHint();
+          this.refreshSlotHint();
         }
       });
     }
   }
 
-  /** 选中槽位 → 加载到 GameState → 进入游戏 */
   private selectSlot(slot: number, isNew: boolean, overlay: HTMLElement) {
-    if (isNew) {
-      // 新游戏：确保槽位为空，先清空再让 GameState 加载默认存档
-      SaveSystem.wipeSlot(slot);
-    }
+    if (isNew) SaveSystem.wipeSlot(slot);
     GameState.loadSlot(slot);
     overlay.classList.remove('open');
-    this.refreshActiveSlotHint();
-    // 进入游戏（OfflineReport 计算离线收益，新游戏时离线为 0）
+    this.refreshSlotHint();
     this.scene.start('OfflineReport');
   }
 
@@ -239,5 +358,59 @@ export class MenuScene extends Phaser.Scene {
       }
       list.appendChild(el);
     }
+  }
+
+  // ===== 设置 =====
+  private showSettings() {
+    let overlay = document.getElementById('menu-settings-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'menu-settings-overlay';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" style="width:min(440px,92vw)">
+          <h3>设置</h3>
+          <p class="muted">游戏数据保存在本地浏览器，清除浏览器缓存将丢失存档。</p>
+          <div class="modal-actions">
+            <button id="menu-settings-close" class="btn">关闭</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const ov = overlay;
+      document.getElementById('menu-settings-close')!.addEventListener('click', () => ov.classList.remove('open'));
+      ov.addEventListener('click', (e) => {
+        if (e.target === ov) ov.classList.remove('open');
+      });
+    }
+    overlay.classList.add('open');
+  }
+
+  // ===== 关于 =====
+  private showAbout() {
+    let overlay = document.getElementById('menu-about-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'menu-about-overlay';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" style="width:min(440px,92vw)">
+          <h3>关于</h3>
+          <p>弹珠炼金术 · Pinball Alchemy</p>
+          <p class="muted">像素风物理弹珠挂机游戏。投放弹珠穿过钉子阵列，通过加减乘除等运算累积金币，归零进入下一周目获取数晶强化永久加成。</p>
+          <p class="muted">v1.4.0 · 3 槽位存档</p>
+          <div class="modal-actions">
+            <button id="menu-about-close" class="btn">关闭</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const ov = overlay;
+      document.getElementById('menu-about-close')!.addEventListener('click', () => ov.classList.remove('open'));
+      ov.addEventListener('click', (e) => {
+        if (e.target === ov) ov.classList.remove('open');
+      });
+    }
+    overlay.classList.add('open');
   }
 }

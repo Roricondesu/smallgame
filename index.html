@@ -719,10 +719,176 @@
     .panel-toggle:hover { background: var(--btn-hover); }
     .panel-toggle svg { width: 14px; height: 14px; }
     #toggle-shop { bottom: 80px; left: 10px; }
+
+    /* ===== 加载动画 ===== */
+    #loader {
+      position: fixed; inset: 0;
+      background: var(--bg-2);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 18px;
+      z-index: 9999;
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+    }
+    #loader.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+    .loader-title {
+      font-family: '"Alimama FangYuanTi VF Thin", sans-serif';
+      font-size: clamp(28px, 6vw, 48px);
+      color: #ffffff;
+      letter-spacing: 4px;
+      opacity: 0;
+      animation: loaderFadeUp 0.8s ease 0.1s forwards;
+    }
+    .loader-sub {
+      font-family: '"Alimama FangYuanTi VF Thin", sans-serif';
+      font-size: clamp(11px, 2.4vw, 16px);
+      color: var(--gold);
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      opacity: 0;
+      animation: loaderFadeUp 0.8s ease 0.3s forwards;
+    }
+    .loader-bar {
+      width: min(240px, 60vw);
+      height: 2px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 6px;
+      opacity: 0;
+      animation: loaderFadeUp 0.6s ease 0.5s forwards;
+    }
+    .loader-bar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    @keyframes loaderFadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== 主菜单：左侧纵向导航 ===== */
+    #menu-ui {
+      position: fixed; inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+    }
+    #menu-ui.hidden { display: none; }
+    .menu-nav {
+      pointer-events: auto;
+      display: flex; flex-direction: column;
+      gap: 6px;
+      padding: 0 0 0 clamp(48px, 10vw, 140px);
+      max-width: 50%;
+    }
+    .menu-title {
+      font-family: '"Alimama FangYuanTi VF Thin", sans-serif';
+      color: #ffffff;
+      font-size: clamp(40px, 8vw, 72px);
+      line-height: 1;
+      letter-spacing: 6px;
+      margin: 0 0 4px;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    }
+    .menu-subtitle {
+      font-family: '"Alimama FangYuanTi VF Thin", sans-serif';
+      color: var(--gold);
+      font-size: clamp(11px, 2vw, 15px);
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      margin: 0 0 28px;
+      opacity: 0.9;
+    }
+    .menu-link {
+      pointer-events: auto;
+      font-family: '"Alimama FangYuanTi VF Thin", sans-serif';
+      color: rgba(255,255,255,0.85);
+      font-size: clamp(16px, 2.4vw, 22px);
+      letter-spacing: 2px;
+      padding: 8px 0;
+      cursor: pointer;
+      position: relative;
+      background: transparent;
+      border: none;
+      text-align: left;
+      transition: color 0.18s ease, padding-left 0.18s ease;
+      width: fit-content;
+    }
+    .menu-link::before {
+      content: '';
+      position: absolute;
+      left: 0; bottom: 6px;
+      width: 0; height: 1px;
+      background: #ffffff;
+      transition: width 0.22s ease;
+    }
+    .menu-link:hover { color: #ffffff; padding-left: 24px; }
+    .menu-link:hover::before { width: 16px; }
+    .menu-link.danger { color: rgba(255,107,107,0.8); }
+    .menu-link.danger:hover { color: var(--bad); }
+    .menu-link.danger::before { background: var(--bad); }
+    .menu-slot-hint {
+      font-family: '"Alimama FangYuanTi VF Thin", sans-serif';
+      color: var(--crystal);
+      font-size: clamp(11px, 1.6vw, 13px);
+      letter-spacing: 1px;
+      margin: 18px 0 0;
+      opacity: 0.85;
+    }
+    .menu-footer {
+      position: fixed;
+      bottom: 16px; left: clamp(48px, 10vw, 140px);
+      font-family: '"Alimama FangYuanTi VF Thin", sans-serif';
+      color: #484f58;
+      font-size: 11px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* 移动端：菜单居中 */
+    @media (max-width: 768px) {
+      #menu-ui { justify-content: center; }
+      .menu-nav {
+        padding: 0 24px;
+        max-width: 100%;
+        align-items: center;
+        text-align: center;
+      }
+      .menu-title { text-align: center; }
+      .menu-subtitle { text-align: center; }
+      .menu-link { text-align: center; }
+      .menu-link::before { left: 50%; transform: translateX(-50%); }
+      .menu-link:hover { padding-left: 0; }
+      .menu-footer { left: 0; right: 0; text-align: center; }
+    }
   </style>
 </head>
 <body>
+  <div id="loader">
+    <div class="loader-title">弹珠炼金术</div>
+    <div class="loader-sub">Pinball Alchemy</div>
+    <div class="loader-bar"><div id="loader-fill" class="loader-bar-fill"></div></div>
+  </div>
+
   <div id="game-root"></div>
+
+  <div id="menu-ui" class="hidden">
+    <nav class="menu-nav">
+      <h1 class="menu-title">弹珠炼金术</h1>
+      <div class="menu-subtitle">Pinball Alchemy</div>
+      <button class="menu-link" data-menu="start">开始游戏</button>
+      <button class="menu-link" data-menu="slots">选择存档</button>
+      <button class="menu-link" data-menu="shop">数晶商店</button>
+      <button class="menu-link" data-menu="settings">设置</button>
+      <button class="menu-link" data-menu="about">关于</button>
+      <div id="menu-slot-hint" class="menu-slot-hint"></div>
+    </nav>
+  </div>
+  <div id="menu-footer" class="menu-footer" style="display:none">v1.4.0 · 3 槽位存档 · 像素风物理弹珠挂机</div>
 
   <div id="hud" style="display:none">
     <div id="top-bar">
@@ -779,6 +945,34 @@
     </div>
   </div>
 
+  <script>
+    // 加载动画：等待字体等资源加载完毕再淡出
+    (function () {
+      const loader = document.getElementById('loader');
+      const fill = document.getElementById('loader-fill');
+      let progress = 0;
+      // 模拟进度推进，避免静止卡顿
+      const tick = setInterval(() => {
+        progress = Math.min(progress + 8, 90);
+        if (fill) fill.style.width = progress + '%';
+      }, 120);
+      const finish = () => {
+        clearInterval(tick);
+        if (fill) fill.style.width = '100%';
+        setTimeout(() => loader && loader.classList.add('hide'), 200);
+      };
+      // 等待字体加载完成
+      const fontsReady = (document.fonts && document.fonts.ready) || Promise.resolve();
+      // 等待 window load（所有资源）
+      const loadEvt = new Promise((resolve) => {
+        if (document.readyState === 'complete') resolve(null);
+        else window.addEventListener('load', resolve, { once: true });
+      });
+      Promise.all([fontsReady, loadEvt]).then(finish).catch(finish);
+      // 兜底：最长 3s 后强制结束
+      setTimeout(finish, 3000);
+    })();
+  </script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
