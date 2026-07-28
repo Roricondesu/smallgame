@@ -161,7 +161,7 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
-    .icon-btn:hover { background: var(--btn-hover); border-color: var(--border-strong); }
+    .icon-btn:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.4); }
     .icon-btn svg { width: 14px; height: 14px; }
     .icon-btn.prestige-btn {
       background: rgba(125, 136, 150, 0.1);
@@ -284,7 +284,7 @@
 
     /* 商店/技能卡片：简约扁平 */
     .shop-item, .skill-item {
-      background: var(--btn);
+      background: transparent;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       padding: 10px;
@@ -294,8 +294,8 @@
       position: relative;
     }
     .shop-item:hover, .skill-item:hover {
-      background: var(--btn-hover);
-      border-color: var(--border-strong);
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(255,255,255,0.4);
     }
     .shop-item:active, .skill-item:active { transform: scale(0.98); }
     .shop-item.locked, .skill-item.locked {
@@ -305,7 +305,7 @@
     }
     .shop-item.locked:hover, .skill-item.locked:hover {
       transform: none;
-      background: var(--btn);
+      background: transparent;
     }
 
     .item-head {
@@ -395,7 +395,7 @@
       font-weight: 500;
       transition: all 0.15s;
     }
-    .tab-btn:hover { background: var(--btn-hover); color: var(--text); }
+    .tab-btn:hover { background: rgba(255,255,255,0.04); color: var(--text); border-color: rgba(255,255,255,0.4); }
     .tab-btn.active {
       background: var(--gold);
       color: #000;
@@ -466,17 +466,79 @@
     .slot-card-actions .btn.danger { flex: 0 0 auto; }
 
     .btn {
-      background: var(--btn); color: var(--text);
+      background: transparent; color: var(--text);
       border: 1px solid var(--border); border-radius: var(--radius-sm);
       padding: 9px 16px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500;
       display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
     }
-    .btn:hover { background: var(--btn-hover); border-color: var(--border-strong); }
+    .btn:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.4); }
     .btn svg { width: 14px; height: 14px; }
     .btn.primary { background: var(--gold); color: #000; border-color: var(--gold); }
-    .btn.primary:hover { background: #ffd966; }
-    .btn.danger { color: var(--bad); border-color: rgba(255, 107, 107, 0.4); }
-    .btn.danger:hover { background: rgba(255, 107, 107, 0.12); }
+    .btn.primary:hover { background: #ffd966; border-color: #ffd966; }
+    .btn.danger { color: var(--bad); border-color: rgba(255, 107, 107, 0.3); }
+    .btn.danger:hover { background: rgba(255, 107, 107, 0.1); border-color: var(--bad); }
+
+    /* ===== 设置弹窗：简约质感 ===== */
+    .settings-section {
+      display: flex; flex-direction: column; gap: 2px;
+      margin: 12px 0;
+      padding: 4px 0;
+      border-top: 1px solid var(--border);
+    }
+    .settings-section:first-of-type { border-top: none; }
+    .settings-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px;
+      padding: 12px 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-label { color: var(--text); font-size: 13px; }
+    .settings-select {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 6px 10px; font-family: inherit; font-size: 12px;
+      cursor: pointer; outline: none;
+      transition: border-color 0.15s;
+    }
+    .settings-select:hover { border-color: var(--border-strong); }
+    .settings-select:focus { border-color: var(--gold); }
+    .settings-select option { background: var(--panel-solid); }
+    /* 开关 */
+    .toggle {
+      width: 38px; height: 22px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      position: relative; cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .toggle.on { background: rgba(245, 197, 66, 0.25); border-color: var(--gold); }
+    .toggle-dot {
+      position: absolute; top: 2px; left: 2px;
+      width: 16px; height: 16px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .toggle.on .toggle-dot { left: 18px; background: var(--gold); }
+    /* 设置按钮：简约白线 */
+    .settings-action {
+      flex: 1;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .settings-action:hover { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.04); }
+    .settings-action.danger { color: var(--bad); border-color: rgba(255,107,107,0.3); }
+    .settings-action.danger:hover { background: rgba(255,107,107,0.1); border-color: var(--bad); }
+    .settings-hint { margin-top: 8px; }
 
     /* ===== 提示条 ===== */
     #toast {

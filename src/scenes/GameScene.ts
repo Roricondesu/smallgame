@@ -227,7 +227,11 @@ export class GameScene extends Phaser.Scene {
     // 定时器
     this.time.addEvent({ delay: 100, loop: true, callback: this.tickAuto, callbackScope: this });
     this.time.addEvent({ delay: 250, loop: true, callback: this.tickActives, callbackScope: this });
-    this.time.addEvent({ delay: 5000, loop: true, callback: () => GameState.saveGame() });
+    // 自动保存间隔由设置控制（默认 30s，0=关闭）
+    {
+      const interval = parseInt(localStorage.getItem('pa_setting_autosave') || '30', 10);
+      if (interval > 0) this.time.addEvent({ delay: interval * 1000, loop: true, callback: () => GameState.saveGame() });
+    }
 
     if (GameState.pegs.length === 0 && GameState.save.stats.totalBalls === 0) {
       this.showTutorialTip();

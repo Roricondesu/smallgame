@@ -33,16 +33,18 @@ export class OfflineReportScene extends Phaser.Scene {
       color: '#4ade80',
     }).setOrigin(0.5);
 
-    const btn = this.add.rectangle(W / 2, H * 0.68, 180, 44, 0x21262d)
-      .setStrokeStyle(1, 0x484f58).setInteractive();
+    // 简约白线悬停按钮
+    const btnW = 200, btnH = 46;
+    const btn = this.add.rectangle(W / 2, H * 0.68, btnW, btnH, 0x000000, 0)
+      .setStrokeStyle(1, 0xffffff, 0.25).setInteractive({ useHandCursor: true });
     this.add.text(W / 2, H * 0.68, '进入游戏', {
       fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif',
       fontSize: '15px',
-      color: '#e6edf3',
+      color: '#ffffff',
     }).setOrigin(0.5);
 
-    btn.on('pointerover', () => btn.setFillStyle(0x30363d));
-    btn.on('pointerout', () => btn.setFillStyle(0x21262d));
+    btn.on('pointerover', () => { btn.setStrokeStyle(1, 0xffffff, 0.8); });
+    btn.on('pointerout', () => { btn.setStrokeStyle(1, 0xffffff, 0.25); });
     btn.on('pointerdown', () => {
       GameState.saveGame();
       this.scene.start('Game');
