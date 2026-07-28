@@ -96,12 +96,20 @@ export class HUD {
   }
 
   private bindPanelToggles() {
-    // 点击标题条整体切换悬浮抽屉展开/收起
-    const title = document.querySelector('#left-panel .panel-title');
-    title?.addEventListener('click', (e) => {
+    const panel = document.getElementById('left-panel')!;
+    const backdrop = document.getElementById('shop-backdrop')!;
+    const toggle = (open?: boolean) => {
+      const willOpen = open !== undefined ? open : panel.classList.contains('collapsed');
+      panel.classList.toggle('collapsed', !willOpen);
+      backdrop.classList.toggle('show', willOpen);
+    };
+    // 点击标题条切换展开/收起
+    document.querySelector('#left-panel .panel-title')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      document.getElementById('left-panel')?.classList.toggle('collapsed');
+      toggle();
     });
+    // 点击遮罩收起
+    backdrop.addEventListener('click', () => toggle(false));
   }
 
   private bindShopTabs() {

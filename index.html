@@ -182,33 +182,50 @@
       50% { box-shadow: 0 0 0 5px rgba(245, 197, 66, 0); }
     }
 
-    /* ===== 悬浮商店抽屉 ===== */
+    /* ===== 悬浮商店抽屉（底部居中，向上展开）===== */
     .side-panel {
       position: fixed;
       left: 50%;
       transform: translateX(-50%);
-      bottom: 12px;
+      bottom: 0;
       width: min(560px, calc(100vw - 24px));
-      max-height: 70vh;
+      height: 70vh;
       background: var(--panel-solid);
       border: 1px solid var(--border-strong);
-      border-radius: var(--radius);
+      border-bottom: none;
+      border-radius: var(--radius) var(--radius) 0 0;
       padding: 0;
       overflow: hidden;
       pointer-events: auto;
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      box-shadow: var(--shadow);
+      box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
       display: flex;
       flex-direction: column;
-      transition: max-height 0.25s ease, padding 0.25s ease;
+      /* 收起态：下移自身高度减去标题条高度，只露标题条在屏幕底部 */
+      transform: translateX(-50%) translateY(calc(70vh - 44px));
+      transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
       z-index: 15;
     }
-    /* 收起态：只显示标题条 */
-    .side-panel.collapsed {
-      max-height: 44px;
+    /* 展开态：向上滑出 */
+    .side-panel:not(.collapsed) {
+      transform: translateX(-50%) translateY(0);
     }
     #left-panel { left: 50%; }
+
+    /* 展开遮罩：点击收起 */
+    .shop-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(5, 7, 9, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.32s ease;
+      z-index: 14;
+    }
+    .shop-backdrop.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
 
     .panel-title {
       font-size: 13px;
@@ -253,6 +270,11 @@
       overflow-y: auto;
       overflow-x: hidden;
       padding-right: 4px;
+      animation: shopFadeIn 0.2s ease;
+    }
+    @keyframes shopFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     #shop-list::-webkit-scrollbar { width: 6px; }
     #shop-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
@@ -563,6 +585,7 @@
       <button id="btn-menu" class="icon-btn"><span id="icon-menu"></span>菜单</button>
     </div>
 
+    <div id="shop-backdrop" class="shop-backdrop"></div>
     <div id="left-panel" class="side-panel collapsed">
       <div class="panel-title"><span id="icon-pegs-dup"></span>商店与技能<span class="collapse-btn">▾</span></div>
       <div class="panel-body">
