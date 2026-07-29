@@ -3,10 +3,11 @@
 // 序列化时 bigint 包装为 { __bigint__: "..." }，加载时还原。
 // 支持 3 个独立存档槽位：key 形如 pinball_alchemy_save_v1_slot${slot}。
 
-import type { SaveData, AutoDropperSave } from '../types';
+import type { SaveData, AutoDropperSave, MarbleSave } from '../types';
 import { BALANCE } from '../types';
 import { AUTO_MAP } from '../data/chapters';
 import { CHAPTERS, CHAPTER_MAP } from '../data/chapters';
+import { MARBLES } from '../data/marbles';
 import { toBig, fromBig } from './BigNum';
 
 const SAVE_KEY_PREFIX = 'pinball_alchemy_save_v1_slot';
@@ -184,6 +185,18 @@ export class SaveSystem {
     if (!merged.marbles) merged.marbles = {};
     if (merged.selectedMarble === undefined) merged.selectedMarble = '';
     if (!merged.seenDialogues) merged.seenDialogues = [];
+    if (!merged.bossDefeated) merged.bossDefeated = {};
+
+    // 迁移旧版弹珠（Record<string, number> 充次数 → Record<string, MarbleSave> 拥有+等级）
+    // 旧版：每种弹珠每章自动补充，玩家可任意使用 → 视作全部已购买 1 级
+    for (const m of MARBLES) {
+      const cur = (merged.marbles as Record<string, unknown>)[m.id];
+      if (typeof cur === 'number') {
+        (merged.marbles as Record<string, MarbleSave>)[m.id] = { owned: true, level: 1 };
+      } else if (!cur || typeof cur !== 'object') {
+        (merged.marbles as Record<string, MarbleSave>)[m.id] = { owned: false, level: 0 };
+      }
+    }
 
     // 迁移旧版 number → bigint（×100 缩放）
     const numToBig = (v: unknown): bigint => {

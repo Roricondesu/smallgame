@@ -385,6 +385,28 @@ export class MenuScene extends Phaser.Scene {
             </div>
           </div>
           <div class="settings-section">
+            <div class="settings-row" style="flex-direction:column; align-items:stretch; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                <div class="settings-label" style="color:#ff8b8b;">Dev 模式 · 金币倍率</div>
+                <div class="toggle" data-settings="dev"><span class="toggle-dot"></span></div>
+              </div>
+              <div id="dev-mul-row" style="display:none;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <input type="range" id="dev-mul-slider" min="1" max="1000" step="1" value="100" style="flex:1; accent-color:var(--gold);">
+                  <span id="dev-mul-val" style="min-width:80px; text-align:right; color:var(--gold); font-weight:600; font-size:12px;">×1</span>
+                </div>
+                <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                  <button class="mini-btn" data-mul="1" style="flex:1; padding:6px; font-size:11px;">×1</button>
+                  <button class="mini-btn" data-mul="10" style="flex:1; padding:6px; font-size:11px;">×10</button>
+                  <button class="mini-btn" data-mul="100" style="flex:1; padding:6px; font-size:11px;">×100</button>
+                  <button class="mini-btn" data-mul="1000" style="flex:1; padding:6px; font-size:11px;">×1000</button>
+                  <button class="mini-btn danger" data-mul="0" style="flex:1; padding:6px; font-size:11px; background:rgba(255,107,107,0.1); border-color:rgba(255,107,107,0.3); color:var(--bad);">关闭</button>
+                </div>
+                <p class="muted" style="margin-top:8px; font-size:11px;">倍率仅对游戏内弹珠金币收益生效，离线收益不翻倍。开发测试用，不影响存档。</p>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
             <div class="settings-row">
               <button class="settings-action" data-act="export">导出存档</button>
               <button class="settings-action" data-act="import">导入存档</button>
@@ -420,12 +442,45 @@ export class MenuScene extends Phaser.Scene {
         localStorage.setItem(`pa_setting_${key}`, cur ? '0' : '1');
         t.classList.toggle('on', !cur);
         if (key === 'fps') this.toggleFps(!cur);
+        if (key === 'dev') this.toggleDevMode(!cur, ov);
       });
     });
     // 自动保存间隔
     const sel = ov.querySelector('#settings-autosave') as HTMLSelectElement;
     sel?.addEventListener('change', () => {
       localStorage.setItem('pa_setting_autosave', sel.value);
+    });
+    // Dev 倍率滑块
+    const slider = ov.querySelector('#dev-mul-slider') as HTMLInputElement;
+    const valEl = ov.querySelector('#dev-mul-val') as HTMLElement;
+    if (slider && valEl) {
+      slider.addEventListener('input', () => {
+        const mul = parseInt(slider.value, 10);
+        valEl.textContent = `×${mul}`;
+        localStorage.setItem('pa_setting_dev_mul', String(mul));
+        GameState.setDevGoldMul(mul);
+      });
+    }
+    // Dev 倍率预设按钮
+    ov.querySelectorAll('[data-mul]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mul = parseInt((btn as HTMLElement).dataset.mul!, 10);
+        if (slider && valEl) {
+          slider.value = String(mul > 0 ? Math.min(1000, mul) : 1);
+          valEl.textContent = mul > 0 ? `×${mul}` : '关闭';
+        }
+        localStorage.setItem('pa_setting_dev_mul', String(mul));
+        GameState.setDevGoldMul(mul);
+        // 关闭按钮：关闭 Dev 模式开关
+        if (mul === 0) {
+          const devToggle = ov.querySelector('[data-settings="dev"]') as HTMLElement;
+          if (devToggle) {
+            devToggle.classList.remove('on');
+            localStorage.setItem('pa_setting_dev', '0');
+            this.toggleDevMode(false, ov);
+          }
+        }
+      });
     });
     // 导出
     ov.querySelector('[data-act="export"]')?.addEventListener('click', () => this.exportSave());
@@ -454,10 +509,39 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
+  /** Dev 模式开关：显示/隐藏倍率滑块行，并应用倍率 */
+  private toggleDevMode(on: boolean, ov: HTMLElement) {
+    const row = ov.querySelector('#dev-mul-row') as HTMLElement;
+    if (row) row.style.display = on ? 'block' : 'none';
+    if (on) {
+      // 启用时读取已保存的倍率
+      const saved = parseInt(localStorage.getItem('pa_setting_dev_mul') || '100', 10);
+      GameState.setDevGoldMul(saved);
+      const slider = ov.querySelector('#dev-mul-slider') as HTMLInputElement;
+      const valEl = ov.querySelector('#dev-mul-val') as HTMLElement;
+      if (slider) slider.value = String(saved > 0 ? Math.min(1000, saved) : 100);
+      if (valEl) valEl.textContent = saved > 0 ? `×${saved}` : '×100';
+    } else {
+      GameState.setDevGoldMul(0);
+    }
+  }
+
   private loadSettingsState(ov: HTMLElement) {
     ov.querySelectorAll('.toggle').forEach((t) => {
       const key = (t as HTMLElement).dataset.settings!;
-      t.classList.toggle('on', localStorage.getItem(`pa_setting_${key}`) === '1');
+      const isOn = localStorage.getItem(`pa_setting_${key}`) === '1';
+      t.classList.toggle('on', isOn);
+      if (key === 'dev' && isOn) {
+        // 显示倍率行
+        const row = ov.querySelector('#dev-mul-row') as HTMLElement;
+        if (row) row.style.display = 'block';
+        const saved = parseInt(localStorage.getItem('pa_setting_dev_mul') || '100', 10);
+        GameState.setDevGoldMul(saved);
+        const slider = ov.querySelector('#dev-mul-slider') as HTMLInputElement;
+        const valEl = ov.querySelector('#dev-mul-val') as HTMLElement;
+        if (slider) slider.value = String(saved > 0 ? Math.min(1000, saved) : 100);
+        if (valEl) valEl.textContent = saved > 0 ? `×${saved}` : '×100';
+      }
     });
     const sel = ov.querySelector('#settings-autosave') as HTMLSelectElement;
     if (sel) sel.value = localStorage.getItem('pa_setting_autosave') || '30';

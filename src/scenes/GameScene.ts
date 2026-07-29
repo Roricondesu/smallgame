@@ -5,9 +5,10 @@
 import Phaser from 'phaser';
 import { GameState, formatNum, bigMulNum } from '../systems/GameState';
 import { PEG_MAP } from '../data/pegs';
-import { MARBLE_MAP } from '../data/marbles';
+
 import { DIALOGUE_MAP, chapterIntroId, chapterMidpointId, chapterPrestigeReadyId } from '../data/dialogues';
 import { DialogueSystem } from '../systems/DialogueSystem';
+import { BossBattleSystem } from '../systems/BossBattleSystem';
 import { bus, EVT } from '../systems/EventBus';
 import { HUD } from '../ui/HUD';
 import type { PegSave, MarbleConfig } from '../types';
@@ -60,6 +61,7 @@ export class GameScene extends Phaser.Scene {
   private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
   private dialogue!: DialogueSystem;
+  private bossBattle!: BossBattleSystem;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -230,9 +232,14 @@ export class GameScene extends Phaser.Scene {
     this.dialogue = new DialogueSystem();
     this.dialogue.mount();
 
-    // 元素弹珠：首次进入或新章补充
-    if (!GameState.save.marbles || Object.keys(GameState.marbles).length === 0) {
-      GameState.refillMarbles();
+    // Boss 战系统
+    this.bossBattle = new BossBattleSystem();
+    this.bossBattle.mount(this.dialogue);
+
+    // Dev 模式：从 localStorage 恢复金币倍率
+    if (localStorage.getItem('pa_setting_dev') === '1') {
+      const mul = parseInt(localStorage.getItem('pa_setting_dev_mul') || '100', 10);
+      GameState.setDevGoldMul(mul > 0 ? mul : 0);
     }
 
     // 事件监听
@@ -255,9 +262,17 @@ export class GameScene extends Phaser.Scene {
       }
     });
     bus.on(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleCodex?.());
+    bus.on(EVT.MARBLE_BOUGHT, () => this.hud.refreshMarbleCodex?.());
+    bus.on(EVT.MARBLE_UPGRADED, () => this.hud.refreshMarbleCodex?.());
     bus.on(EVT.PRESTIGE_AVAILABLE, () => {
       // 各章首次达到归零条件时，播放对应归零剧情对话
       this.tryPlayDialogue(chapterPrestigeReadyId(GameState.chapterId));
+    });
+    bus.on(EVT.BOSS_DEFEATED, () => {
+      // Boss 击败后重新检查章节进度，可能立即触发归零就绪
+      GameState.saveGame();
+      this.hud.showToast('Boss 已击败！归零之路已开', 'prestige');
+      GameState.recheckChapterGoal();
     });
     bus.on(EVT.MILESTONE_REACHED, (payload: unknown) => {
       const p = payload as { type: string; chapter: number };
@@ -266,15 +281,6 @@ export class GameScene extends Phaser.Scene {
       } else if (p.type === 'revelation') {
         this.tryPlayDialogue('ch4_revelation');
       }
-    });
-    bus.on(EVT.MARBLE_USED, (id: unknown) => {
-      // 玩家首次使用元素弹珠时，标记教程完成
-      if (this.tutorialStage === 'marbles') {
-        this.tutorialStage = 'done';
-      }
-      const marbleId = String(id);
-      const cfg = MARBLE_MAP[marbleId];
-      if (cfg) this.hud.showToast(`${cfg.name} 已使用`, 'ball');
     });
 
     // 定时器
@@ -296,6 +302,7 @@ export class GameScene extends Phaser.Scene {
       GameState.saveGame();
       this.hud.unmount();
       this.dialogue?.unmount();
+      this.bossBattle?.unmount();
       this.scale.off('resize', this.onResize, this);
     });
     this.events.on('pause', () => GameState.saveGame());
@@ -552,15 +559,13 @@ export class GameScene extends Phaser.Scene {
     let value = init;
     if (lvl > 0) value = bigMulNum(init, 1 + lvl * 0.1);
 
-    // 元素弹珠：仅在第一颗消耗次数，多重投掷共享同一弹珠效果
-    let marble: MarbleConfig | null = null;
-    if (GameState.selectedMarble) {
-      marble = GameState.consumeSelectedMarble();
-      if (marble) {
-        // 圣光弹珠：数值立即翻倍
-        if (marble.element === 'holy') {
-          value = value * 2n;
-        }
+    // 元素弹珠：永久拥有，手动投放使用当前选中弹珠（不消耗次数）
+    const marble = GameState.getSelectedMarbleConfig();
+    if (marble) {
+      const mLevel = GameState.getMarbleLevel(marble.id);
+      // 圣光弹珠：按下落时数值立即按等级倍率翻倍
+      if (marble.element === 'holy') {
+        value = bigMulNum(value, marble.getValue(mLevel));
       }
     }
 
@@ -623,7 +628,8 @@ export class GameScene extends Phaser.Scene {
     const ball: Ball = {
       sprite, text, value, source, golden, sageCopy: 0n,
       marble: marble ?? null,
-      thunderCharges: marble?.element === 'thunder' ? 2 : 0,
+      // 雷霆链击次数：等级决定（基础 2 + (level-1)）
+      thunderCharges: marble?.element === 'thunder' ? (2 + (GameState.getMarbleLevel(marble.id) - 1)) : 0,
       poisonedPegs: marble?.element === 'poison' ? new Set() : undefined,
     };
     this.balls.push(ball);
@@ -709,16 +715,18 @@ export class GameScene extends Phaser.Scene {
   /** 弹珠与钉子碰撞时触发的元素效果 */
   private applyMarbleOnPeg(ball: Ball, ps: PegSprite) {
     if (!ball.marble) return;
+    const mLevel = GameState.getMarbleLevel(ball.marble.id);
     switch (ball.marble.element) {
       case 'fire': {
-        // 每次碰撞 ×1.5
-        ball.value = bigMulNum(ball.value, 1.5);
+        // 每次碰撞按等级倍率加成
+        const mul = ball.marble.getValue(mLevel);
+        ball.value = bigMulNum(ball.value, mul);
         ball.text.setText(formatNum(ball.value));
-        this.spawnFloatText(ball.sprite.x + 14, ball.sprite.y - 4, '×1.5', ball.marble.color);
+        this.spawnFloatText(ball.sprite.x + 14, ball.sprite.y - 4, `×${mul.toFixed(2)}`, ball.marble.color);
         break;
       }
       case 'poison': {
-        // 标记该钉子，下次结算 ×1.3
+        // 标记该钉子，下次结算按等级倍率加成
         if (!ball.poisonedPegs) ball.poisonedPegs = new Set();
         if (!ball.poisonedPegs.has(ps.pegId)) {
           ball.poisonedPegs.add(ps.pegId);
@@ -734,7 +742,7 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case 'thunder': {
-        // 雷霆链击：随机选择附近 1 个钉子额外触发一次相同运算
+        // 雷霆链击：等级决定链击次数
         if ((ball.thunderCharges ?? 0) > 0) {
           ball.thunderCharges = (ball.thunderCharges ?? 0) - 1;
           const neighbors: PegSprite[] = [];
@@ -784,17 +792,21 @@ export class GameScene extends Phaser.Scene {
 
     // ===== 元素弹珠结算效果 =====
     if (ball.marble) {
+      const mLevel = GameState.getMarbleLevel(ball.marble.id);
       switch (ball.marble.element) {
         case 'ice': {
-          // 落底翻倍
-          gold = gold * 2n;
-          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, '冰花 ×2', ball.marble.color);
+          // 落底翻倍（按等级倍率）
+          const mul = ball.marble.getValue(mLevel);
+          gold = bigMulNum(gold, mul);
+          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `冰花 ×${mul.toFixed(2)}`, ball.marble.color);
           break;
         }
         case 'dark': {
-          // 暗影：复制数值（再加一份 ball.value）
-          gold = gold + bigMulNum(ball.value, multiplier);
-          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, '暗影复制', ball.marble.color);
+          // 暗影：按等级倍率复制数值
+          const copies = ball.marble.getValue(mLevel);
+          const extra = bigMulNum(ball.value, multiplier * (copies - 1));
+          gold = gold + extra;
+          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `暗影 ×${copies.toFixed(2)}`, ball.marble.color);
           break;
         }
         default:
@@ -975,7 +987,14 @@ export class GameScene extends Phaser.Scene {
     while (this.autoAccumulator >= 1) {
       this.autoAccumulator -= 1;
       const x = GameState.getSkillLevel('smartDrop') > 0 ? DESIGN_W / 2 : (0.2 + Math.random() * 0.6) * DESIGN_W;
-      this.spawnBall(x, 30, GameState.ballInitialValue, 'auto', null);
+      // 自动投放：按权重抽取已拥有的元素弹珠（无则普通弹珠）
+      const marble = GameState.pickAutoMarble();
+      let value = GameState.ballInitialValue;
+      if (marble && marble.element === 'holy') {
+        const mLevel = GameState.getMarbleLevel(marble.id);
+        value = bigMulNum(value, marble.getValue(mLevel));
+      }
+      this.spawnBall(x, 30, value, 'auto', marble);
       GameState.onBallDropped('auto');
     }
   }

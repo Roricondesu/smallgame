@@ -16,9 +16,12 @@ export const EVT = {
   TOAST: 'toast',
   SAVE_DONE: 'save_done',
   MARBLE_SELECTED: 'marble_selected',
-  MARBLE_USED: 'marble_used',
+  MARBLE_BOUGHT: 'marble_bought',
+  MARBLE_UPGRADED: 'marble_upgraded',
   DIALOGUE_TRIGGER: 'dialogue_trigger',
   MILESTONE_REACHED: 'milestone_reached',
+  BOSS_TRIGGER: 'boss_trigger',
+  BOSS_DEFEATED: 'boss_defeated',
 } as const;
 
 type EventCallback = (...args: unknown[]) => void;

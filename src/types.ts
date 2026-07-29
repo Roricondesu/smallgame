@@ -35,11 +35,13 @@ export interface SaveData {
     highestBallValue: bigint;
   };
   // 弹珠系统：每种元素弹珠的剩余使用次数（每章自动补充）
-  marbles?: Record<string, number>;
-  // 当前选中的弹珠元素 ID，'' 表示使用普通弹珠
+  marbles?: Record<string, MarbleSave>;
+  // 当前选中的弹珠元素 ID（手动投放使用），'' 表示使用普通弹珠
   selectedMarble?: string;
   // 已观看过对话的 ID 集合（避免重复播放）
   seenDialogues?: string[];
+  // Boss 战击败记录：bossId -> 是否已击败（章节内）
+  bossDefeated?: Record<string, boolean>;
 }
 
 export interface PegConfig {
@@ -115,18 +117,33 @@ export interface CrystalUpgrade {
   desc: string;
 }
 
-/** 元素弹珠配置：不同弹珠有不同效果与元素 */
+/** 元素弹珠存档：owned 是否已购买（永久拥有），level 当前升级等级（1=刚购买） */
+export interface MarbleSave {
+  owned: boolean;
+  level: number;
+}
+
+/** 元素弹珠配置：购买后永久拥有，可升级，提升效果与自动触发概率 */
 export interface MarbleConfig {
   id: string;
   name: string;
   element: 'fire' | 'ice' | 'thunder' | 'poison' | 'holy' | 'dark';
   color: number;
-  /** 每章自动补充的使用次数 */
-  charges: number;
-  /** 效果简述（HUD 展示用） */
-  effect: string;
+  /** 一次性购买成本（金币） */
+  purchaseCost: number;
+  /** 升级基础成本（金币） */
+  upgradeBaseCost: number;
+  /** 升级成本每级增长系数 */
+  upgradeGrowth: number;
+  /** 最大升级等级（含初始 1 级） */
+  maxLevel: number;
+  /** 当前等级效果值：火/冰/毒/圣/暗为倍率，雷为链击钉子数 */
+  getValue: (level: number) => number;
+  /** 当前等级自动投放权重（与普通弹珠权重 10 + 其他弹珠权重之和参与加权随机） */
+  getAutoWeight: (level: number) => number;
+  /** 当前等级效果简述（HUD 展示） */
+  effect: (level: number) => string;
   desc: string;
-  /** 释放时触发：返回特殊倍率（作用于本球），或副作用描述 */
 }
 
 export const BALANCE = {

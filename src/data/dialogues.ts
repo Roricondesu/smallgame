@@ -455,3 +455,8 @@ export function chapterMidpointId(chapterId: number): string {
 export function chapterPrestigeReadyId(chapterId: number): string {
   return `ch${chapterId}_prestige_ready`;
 }
+
+/** 章节 Boss 战对话 ID */
+export function chapterBossId(chapterId: number): string {
+  return `ch${chapterId}_boss`;
+}

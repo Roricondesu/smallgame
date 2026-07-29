@@ -7,7 +7,7 @@ import { bus, EVT } from './EventBus';
 import { PEG_MAP } from '../data/pegs';
 import { SKILL_MAP, ACTIVE_SKILLS } from '../data/skills';
 import { CHAPTERS, CHAPTER_MAP, AUTO_MAP, CRYSTAL_MAP } from '../data/chapters';
-import { MARBLES, MARBLE_MAP } from '../data/marbles';
+import { MARBLES, MARBLE_MAP, MARBLE_NORMAL_WEIGHT } from '../data/marbles';
 import type { SaveData, PegSave, AutoDropperSave } from '../types';
 import { BALANCE } from '../types';
 import {
@@ -62,6 +62,8 @@ class GameStateClass {
   private actives = new ActiveState();
   private combo = 0;
   private comboTimer = 0;
+  // Dev 模式：金币倍率（运行时内存态，不存档）。0 = 关闭，>0 时为倍率
+  private _devGoldMul = 0;
 
   get save() { return this._save; }
   get slot() { return this._slot; }
@@ -76,6 +78,13 @@ class GameStateClass {
   get marbles() { return this._save.marbles ?? {}; }
   get selectedMarble() { return this._save.selectedMarble ?? ''; }
   get seenDialogues() { return this._save.seenDialogues ?? []; }
+
+  /** Dev 模式：当前金币倍率（0 表示关闭） */
+  get devGoldMul() { return this._devGoldMul; }
+  /** Dev 模式：设置金币倍率（0=关闭，>0 时所有金币收益乘以该倍率） */
+  setDevGoldMul(mul: number) {
+    this._devGoldMul = Math.max(0, mul);
+  }
 
   init() {}
 
@@ -98,9 +107,14 @@ class GameStateClass {
 
   // ===== 金币 =====
   addGold(n: bigint, _source: 'ball' | 'offline' = 'ball') {
-    this._save.gold += n;
-    this._save.totalGold += n;
-    this._save.stats.totalGoldEarned += n;
+    // Dev 模式：金币收益倍率（仅对来源为 ball 的收益生效，离线收益不翻倍避免恶性循环）
+    let gain = n;
+    if (this._devGoldMul > 1 && _source === 'ball') {
+      gain = bigMulNum(n, this._devGoldMul);
+    }
+    this._save.gold += gain;
+    this._save.totalGold += gain;
+    this._save.stats.totalGoldEarned += gain;
     bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     this.checkChapterGoal();
   }
@@ -476,13 +490,18 @@ class GameStateClass {
   }
 
   // ===== 周目 =====
+  /** 公开入口：Boss 击败后等外部事件可重新检查章节进度 */
+  recheckChapterGoal() {
+    this.checkChapterGoal();
+  }
+
   checkChapterGoal() {
     const ch = this.chapter;
     const progress = this._save.storyProgress;
 
     // 50% 里程碑：触发中点剧情
     if (this._save.totalGold >= ch.targetGold / 2n
-      && !progress.endsWith('_midpoint') && !progress.endsWith('_revelation') && !progress.endsWith('_ready')) {
+      && !progress.endsWith('_midpoint') && !progress.endsWith('_revelation') && !progress.endsWith('_ready') && !progress.endsWith('_boss')) {
       this._save.storyProgress = `ch${this._save.chapterId}_midpoint`;
       bus.emit(EVT.MILESTONE_REACHED, { type: 'midpoint', chapter: this._save.chapterId });
     }
@@ -495,9 +514,20 @@ class GameStateClass {
       bus.emit(EVT.MILESTONE_REACHED, { type: 'revelation', chapter: 4 });
     }
 
+    // 90% Boss 战触发（仅有 Boss 的章节：2/3/4）
+    if (this.currentBossId
+      && this._save.totalGold >= ch.targetGold * 9n / 10n
+      && !progress.endsWith('_boss') && !progress.endsWith('_ready')
+      && !this.isBossDefeated()) {
+      this._save.storyProgress = `ch${this._save.chapterId}_boss`;
+      bus.emit(EVT.BOSS_TRIGGER, this.currentBossId);
+    }
+
     // 100%：归零就绪
     if (this._save.totalGold < ch.targetGold) return;
     if (progress.endsWith('_ready')) return;
+    // 有 Boss 的章节：必须先击败 Boss 才能归零
+    if (this.currentBossId && !this.isBossDefeated()) return;
     this._save.storyProgress = `ch${this._save.chapterId}_ready`;
     bus.emit(EVT.PRESTIGE_AVAILABLE);
   }
@@ -505,6 +535,31 @@ class GameStateClass {
   // 玩家主动关闭归零弹窗：保持 _ready 状态，不再重复弹
   dismissPrestigeModal() {
     // storyProgress 已是 _ready，无需改动；此方法留给 UI 明确语义
+  }
+
+  // ===== Boss 战系统 =====
+  /** 当前章节对应的 Boss ID（无 Boss 章节返回 null） */
+  get currentBossId(): 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | null {
+    if (this.chapterId === 2) return 'boss_skull';
+    if (this.chapterId === 3) return 'boss_ghost';
+    if (this.chapterId === 4) return 'boss_chameleon';
+    return null;
+  }
+
+  /** 当前章节是否已击败 Boss */
+  isBossDefeated(): boolean {
+    const id = this.currentBossId;
+    if (!id) return true;
+    return !!this._save.bossDefeated?.[id];
+  }
+
+  /** 标记当前章节 Boss 已击败 */
+  markBossDefeated() {
+    const id = this.currentBossId;
+    if (!id) return;
+    if (!this._save.bossDefeated) this._save.bossDefeated = {};
+    this._save.bossDefeated[id] = true;
+    bus.emit(EVT.BOSS_DEFEATED, id);
   }
 
   prestige(nextChapter: number) {
@@ -521,9 +576,10 @@ class GameStateClass {
     this._save.skillLevels = {};
     this._save.ballInitialValue = toBig(1);
     this._save.storyProgress = `ch${this._save.chapterId}_intro`;
-    // 新章开始：补充元素弹珠
-    this.refillMarbles();
+    // 弹珠为永久资产，归零时不重置；仅清除选中状态
     this._save.selectedMarble = '';
+    // 重置 Boss 击败记录（进入新章节）
+    this._save.bossDefeated = {};
     bus.emit(EVT.GOLD_CHANGED, this._save.gold);
     bus.emit(EVT.CRYSTAL_CHANGED, this._save.crystal);
     bus.emit(EVT.BALL_VALUE_CHANGED, this._save.ballInitialValue);
@@ -565,55 +621,110 @@ class GameStateClass {
     return { gold, seconds };
   }
 
-  // ===== 元素弹珠系统 =====
-  /** 补充元素弹珠：新章开始 / 进入游戏时调用，按 MARBLES 配置填充 */
-  refillMarbles() {
-    if (!this._save.marbles) this._save.marbles = {};
-    for (const m of MARBLES) {
-      // 不叠加，取 max（防止反复触发堆叠）
-      const cur = this._save.marbles[m.id] ?? 0;
-      this._save.marbles[m.id] = Math.max(cur, m.charges);
-    }
+  // ===== 元素弹珠系统（购买永久拥有 + 升级 + 自动权重） =====
+  /** 获取某种元素弹珠的存档状态（未拥有返回默认未购买态） */
+  getMarbleSave(id: string): import('../types').MarbleSave {
+    return this._save.marbles?.[id] ?? { owned: false, level: 0 };
   }
 
-  /** 获取某种元素弹珠剩余次数 */
-  getMarbleCharges(id: string): number {
-    return this.marbles[id] ?? 0;
+  /** 是否已购买该弹珠 */
+  isMarbleOwned(id: string): boolean {
+    return this.getMarbleSave(id).owned;
   }
 
-  /** 当前选中的弹珠配置（无选中返回 null） */
+  /** 当前等级（未拥有返回 0） */
+  getMarbleLevel(id: string): number {
+    const s = this.getMarbleSave(id);
+    return s.owned ? Math.max(1, s.level) : 0;
+  }
+
+  /** 当前选中弹珠的配置（无选中返回 null） */
   getSelectedMarbleConfig() {
     const id = this.selectedMarble;
-    if (!id) return null;
+    if (!id || !this.isMarbleOwned(id)) return null;
     return MARBLE_MAP[id] ?? null;
   }
 
-  /** 选择元素弹珠（id='' 表示切回普通弹珠） */
+  /** 一次性购买弹珠 */
+  buyMarble(id: string): boolean {
+    const cfg = MARBLE_MAP[id];
+    if (!cfg) return false;
+    if (this.isMarbleOwned(id)) {
+      bus.emit(EVT.TOAST, '已拥有该弹珠');
+      return false;
+    }
+    const cost = toBig(cfg.purchaseCost);
+    if (!this.spendGold(cost)) {
+      bus.emit(EVT.TOAST, '金币不足');
+      return false;
+    }
+    if (!this._save.marbles) this._save.marbles = {};
+    this._save.marbles[id] = { owned: true, level: 1 };
+    bus.emit(EVT.MARBLE_BOUGHT, id);
+    return true;
+  }
+
+  /** 升级弹珠等级 */
+  upgradeMarble(id: string): boolean {
+    const cfg = MARBLE_MAP[id];
+    if (!cfg) return false;
+    if (!this.isMarbleOwned(id)) {
+      bus.emit(EVT.TOAST, '请先购买该弹珠');
+      return false;
+    }
+    const lvl = this.getMarbleLevel(id);
+    if (lvl >= cfg.maxLevel) {
+      bus.emit(EVT.TOAST, '弹珠已满级');
+      return false;
+    }
+    const cost = toBig(Math.floor(cfg.upgradeBaseCost * Math.pow(cfg.upgradeGrowth, lvl - 1)));
+    if (!this.spendGold(cost)) {
+      bus.emit(EVT.TOAST, '金币不足');
+      return false;
+    }
+    this._save.marbles![id] = { owned: true, level: lvl + 1 };
+    bus.emit(EVT.MARBLE_UPGRADED, id, lvl + 1);
+    return true;
+  }
+
+  /** 升级成本（用于 HUD 显示） */
+  getMarbleUpgradeCost(id: string): bigint {
+    const cfg = MARBLE_MAP[id];
+    if (!cfg) return 0n;
+    const lvl = this.getMarbleLevel(id);
+    if (lvl <= 0 || lvl >= cfg.maxLevel) return 0n;
+    return toBig(Math.floor(cfg.upgradeBaseCost * Math.pow(cfg.upgradeGrowth, lvl - 1)));
+  }
+
+  /** 选择元素弹珠（id='' 表示切回普通弹珠）；未拥有不可选 */
   selectMarble(id: string) {
     if (id && !MARBLE_MAP[id]) return;
-    // 切换前若已选其他弹珠，不退还次数（已使用即消耗）
+    if (id && !this.isMarbleOwned(id)) {
+      bus.emit(EVT.TOAST, '尚未拥有该弹珠');
+      return;
+    }
     this._save.selectedMarble = id;
     bus.emit(EVT.MARBLE_SELECTED, id);
   }
 
-  /** 投放一颗元素弹珠：扣减次数并返回当前选中的弹珠配置；若次数耗尽自动回退普通 */
-  consumeSelectedMarble(): import('../types').MarbleConfig | null {
-    const id = this.selectedMarble;
-    if (!id) return null;
-    const cur = this.getMarbleCharges(id);
-    if (cur <= 0) {
-      this._save.selectedMarble = '';
-      bus.emit(EVT.MARBLE_SELECTED, '');
-      return null;
+  /**
+   * 自动投放时按权重抽取一颗元素弹珠；返回其配置或 null（普通弹珠）。
+   * 权重池：普通弹珠基础权重 + 各已拥有弹珠的 getAutoWeight(level)。
+   */
+  pickAutoMarble(): import('../types').MarbleConfig | null {
+    const owned = MARBLES.filter((m) => this.isMarbleOwned(m.id));
+    if (owned.length === 0) return null;
+    let total = MARBLE_NORMAL_WEIGHT;
+    for (const m of owned) total += m.getAutoWeight(this.getMarbleLevel(m.id));
+    let roll = Math.random() * total;
+    if (roll < MARBLE_NORMAL_WEIGHT) return null;
+    roll -= MARBLE_NORMAL_WEIGHT;
+    for (const m of owned) {
+      const w = m.getAutoWeight(this.getMarbleLevel(m.id));
+      if (roll < w) return m;
+      roll -= w;
     }
-    this._save.marbles![id] = cur - 1;
-    bus.emit(EVT.MARBLE_USED, id);
-    if (this._save.marbles![id] <= 0) {
-      // 自动取消选中
-      this._save.selectedMarble = '';
-      bus.emit(EVT.MARBLE_SELECTED, '');
-    }
-    return MARBLE_MAP[id] ?? null;
+    return null;
   }
 
   // ===== 对话系统 =====

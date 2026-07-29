@@ -46,6 +46,7 @@ export class HUD {
     this.updateHeader();
     this.startRateTracking();
     this.updateChapterProgress();
+    this.updateBossButtonState();
   }
 
   unmount() {
@@ -75,18 +76,35 @@ export class HUD {
     document.getElementById('btn-prestige')!.addEventListener('click', () => {
       this.handlePrestigeClick();
     });
+    document.getElementById('btn-boss')!.addEventListener('click', () => {
+      // 手动触发 Boss 战（事件由 BossBattleSystem 监听后开启）
+      const id = GameState.currentBossId;
+      if (id && !GameState.isBossDefeated()) {
+        bus.emit(EVT.BOSS_TRIGGER, id);
+      }
+    });
   }
 
-  /** 归零按钮：达标则打开归零试炼弹窗，未达标则提示进度 */
+  /** 归零按钮：达标则打开归零试炼弹窗，未达标则提示进度；有 Boss 章节需先击败 Boss */
   private handlePrestigeClick() {
     const ch = GameState.chapter;
     if (GameState.save.totalGold >= ch.targetGold) {
+      // 检查是否需要先打 Boss
+      if (GameState.currentBossId && !GameState.isBossDefeated()) {
+        this.showToast('请先击败本章 Boss！', 'prestige');
+        return;
+      }
       this.showPrestigeModal();
       return;
     }
+    // 90%+ 且有未击败的 Boss → 提示打 Boss
     const tg = fromBig(ch.targetGold);
     const cur = fromBig(GameState.save.totalGold);
     const pct = isFinite(tg) && tg > 0 ? Math.min(99.9, (cur / tg) * 100) : 0;
+    if (GameState.currentBossId && !GameState.isBossDefeated() && pct >= 90) {
+      this.showToast('Boss 已现身！点击场景内按钮进入战斗', 'prestige');
+      return;
+    }
     this.showToast(`归零进度 ${pct.toFixed(1)}%`, 'prestige');
   }
 
@@ -184,7 +202,21 @@ export class HUD {
     bus.on(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.AUTO_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
     bus.on(EVT.PRESTIGE_AVAILABLE, () => this.showPrestigeModal());
+    bus.on(EVT.BOSS_TRIGGER, () => this.updateBossButtonState());
+    bus.on(EVT.BOSS_DEFEATED, () => this.updateBossButtonState());
     bus.on(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
+  }
+
+  /** Boss 战按钮显隐：当前章节有 Boss 且未击败时显示 */
+  private updateBossButtonState() {
+    const btn = document.getElementById('btn-boss');
+    if (!btn) return;
+    const id = GameState.currentBossId;
+    const shouldShow = !!id && !GameState.isBossDefeated();
+    btn.style.display = shouldShow ? 'flex' : 'none';
+    // 当 Boss 战剧情触发后高亮
+    const triggered = GameState.save.storyProgress.endsWith('_boss');
+    btn.classList.toggle('ready', shouldShow && triggered);
   }
 
   private updateHeader() {
@@ -302,40 +334,84 @@ export class HUD {
     if (this.shopTab === 'marbles') this.renderShop();
   }
 
-  /** 弹珠图鉴：展示所有元素弹珠的剩余次数与效果说明 */
+  /** 弹珠图鉴：展示所有元素弹珠的购买/升级/选择状态 */
   private renderMarbleCodex(list: HTMLElement) {
     const tip = document.createElement('div');
     tip.style.cssText = 'color: var(--muted); font-size: 11px; line-height: 1.6; margin-bottom: 10px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px;';
-    tip.textContent = '点击选中弹珠后，手动投放时消耗 1 次。每章自动补充。';
+    tip.textContent = '购买后永久拥有，可升级提升效果与自动触发概率。选中后手动投放使用该弹珠。';
     list.appendChild(tip);
 
     for (const m of MARBLES) {
-      const charges = GameState.getMarbleCharges(m.id);
+      const owned = GameState.isMarbleOwned(m.id);
+      const level = GameState.getMarbleLevel(m.id);
       const selected = GameState.selectedMarble === m.id;
+      const maxed = level >= m.maxLevel;
+
+      const colorHex = '#' + m.color.toString(16).padStart(6, '0');
+
       const el = document.createElement('div');
       el.className = 'marble-codex-card';
+      if (selected) {
+        el.style.borderColor = 'var(--gold)';
+        el.style.background = 'rgba(245, 197, 66, 0.06)';
+      }
+
+      // 等级 / 状态 文案
+      const statusText = !owned ? '未拥有' : (maxed ? `满级 Lv.${level}` : `Lv.${level}/${m.maxLevel}`);
+
+      // 升级成本
+      const upgradeCost = GameState.getMarbleUpgradeCost(m.id);
+      const upgradeAfford = upgradeCost > 0n && GameState.gold >= upgradeCost;
+
+      // 自动权重
+      const autoWeight = owned ? m.getAutoWeight(level) : 0;
+      const totalWeight = owned ? (10 + MARBLES.filter(x => GameState.isMarbleOwned(x.id)).reduce((s, x) => s + x.getAutoWeight(GameState.getMarbleLevel(x.id)), 0)) : 0;
+      const autoRate = totalWeight > 0 ? ((autoWeight / totalWeight) * 100).toFixed(1) : '0.0';
+
       el.innerHTML = `
-        <div class="marble-codex-icon" style="background: #${(m.color).toString(16).padStart(6, '0')}33; border-color: #${(m.color).toString(16).padStart(6, '0')};">
-          <div class="marble-ball" style="background: radial-gradient(circle at 35% 35%, #${(m.color).toString(16).padStart(6, '0')}, #${(m.color).toString(16).padStart(6, '0')}99); box-shadow: 0 0 6px #${(m.color).toString(16).padStart(6, '0')}66;"></div>
+        <div class="marble-codex-icon" style="background: ${colorHex}33; border-color: ${colorHex};">
+          <div class="marble-ball" style="background: radial-gradient(circle at 35% 35%, ${colorHex}, ${colorHex}99); box-shadow: 0 0 6px ${colorHex}66;"></div>
         </div>
         <div class="marble-codex-body">
           <div class="marble-codex-name">
             <span>${m.name}</span>
-            <span class="marble-codex-charges">剩余 ${charges}/${m.charges}</span>
+            <span class="marble-codex-charges">${statusText}</span>
             ${selected ? `<span class="marble-codex-charges" style="color:var(--gold); border-color: var(--gold);">已选中</span>` : ''}
           </div>
-          <div class="marble-codex-effect">${m.effect}</div>
-          <div class="marble-codex-desc">${m.desc}</div>
+          <div class="marble-codex-effect">${owned ? m.effect(level) : m.desc}</div>
+          <div class="marble-codex-desc">${owned ? `${m.desc}（自动 ${autoRate}%）` : m.desc}</div>
+          <div class="item-actions" style="margin-top: 6px;">
+            ${!owned
+              ? `<button class="mini-btn ${GameState.gold >= toBig(m.purchaseCost) ? 'afford' : 'cant'}" data-act="buy">${svgIcon('gold', 11)} 购买 ${formatNum(toBig(m.purchaseCost))}</button>`
+              : (maxed
+                ? `<button class="mini-btn maxed" disabled>已满级</button>`
+                : `<button class="mini-btn speed ${upgradeAfford ? 'afford' : 'cant'}" data-act="upgrade">${svgIcon('gold', 11)} 升级 ${formatNum(upgradeCost)}</button>`
+              )
+            }
+            ${owned
+              ? `<button class="mini-btn ${selected ? 'maxed' : 'afford'}" data-act="select" ${selected ? 'disabled' : ''}>${selected ? '使用中' : '选中'}</button>`
+              : ''}
+          </div>
         </div>
       `;
-      el.addEventListener('click', () => {
-        if (charges > 0) {
-          GameState.selectMarble(selected ? '' : m.id);
-          this.renderShop();
-        } else {
-          this.showToast(`${m.name} 已用完`, 'info');
-        }
+
+      // 购买按钮
+      el.querySelector('[data-act="buy"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (GameState.buyMarble(m.id)) this.renderShop();
       });
+      // 升级按钮
+      el.querySelector('[data-act="upgrade"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (GameState.upgradeMarble(m.id)) this.renderShop();
+      });
+      // 选中按钮
+      el.querySelector('[data-act="select"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        GameState.selectMarble(selected ? '' : m.id);
+        this.renderShop();
+      });
+
       list.appendChild(el);
     }
   }
