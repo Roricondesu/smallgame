@@ -71,6 +71,10 @@ export class GameScene extends Phaser.Scene {
   private autoAccumulator = 0;
   // 教程状态机：跟踪玩家是否完成首次放钉/投弹
   private tutorialStage: 'intro' | 'await_peg' | 'await_drop' | 'marbles' | 'done' = 'intro';
+  /** 教程状态（供 HUD 任务提示读取） */
+  get tutorialState() { return this.tutorialStage; }
+  /** 通知 HUD 刷新任务提示 */
+  private notifyTaskHint() { this.hud?.updateTaskHint(); }
   // 球/钉子的碰撞体集合，用于碰撞回调过滤
   private ballLabels = new WeakSet<MatterJS.Body>();
   private pegLabels = new WeakSet<MatterJS.Body>();
@@ -200,6 +204,7 @@ export class GameScene extends Phaser.Scene {
               this.tutorialStage = 'await_drop';
               this.tryPlayDialogue('ch1_first_peg');
               this.hud.showToast('点击上方投放区，让弹珠落下', 'ball');
+              this.notifyTaskHint();
             }
           }
         }
@@ -262,7 +267,14 @@ export class GameScene extends Phaser.Scene {
       }
     });
     bus.on(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleCodex?.());
-    bus.on(EVT.MARBLE_BOUGHT, () => this.hud.refreshMarbleCodex?.());
+    bus.on(EVT.MARBLE_BOUGHT, () => {
+      this.hud.refreshMarbleCodex?.();
+      // 教程：首次购买弹珠后完成弹珠教程
+      if (this.tutorialStage === 'marbles') {
+        this.tutorialStage = 'done';
+        this.notifyTaskHint();
+      }
+    });
     bus.on(EVT.MARBLE_UPGRADED, () => this.hud.refreshMarbleCodex?.());
     bus.on(EVT.PRESTIGE_AVAILABLE, () => {
       // 各章首次达到归零条件时，播放对应归零剧情对话
@@ -322,6 +334,7 @@ export class GameScene extends Phaser.Scene {
       } else {
         this.tutorialStage = 'done';
       }
+      this.notifyTaskHint();
       return;
     }
     // 第 1 章：开场对话结束后进入"等放置钉子"
@@ -336,6 +349,7 @@ export class GameScene extends Phaser.Scene {
         } else {
           this.tutorialStage = 'done';
         }
+        this.notifyTaskHint();
         // 第 2/3 章开场后接角色相遇对话
         if (GameState.chapterId === 2) {
           this.time.delayedCall(600, () => this.tryPlayDialogue('ch2_meet_lily'));
@@ -581,6 +595,7 @@ export class GameScene extends Phaser.Scene {
     if (this.tutorialStage === 'await_drop') {
       this.tutorialStage = 'marbles';
       this.tryPlayDialogue('ch1_first_drop');
+      this.notifyTaskHint();
       // 间隔后引导玩家使用元素弹珠
       this.time.delayedCall(4000, () => {
         if (this.tutorialStage === 'marbles' && !GameState.hasSeenDialogue('ch1_marbles')) {

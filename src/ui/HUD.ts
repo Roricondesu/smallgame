@@ -11,6 +11,11 @@ import { MARBLES } from '../data/marbles';
 import { svgIcon, operatorIcon, type IconKey } from './icons';
 import type { PegSave } from '../types';
 
+/** HUD 读取 scene 教程状态所需的最小接口（避免循环依赖 GameScene） */
+interface TaskHintScene {
+  tutorialState: string;
+}
+
 export class HUD {
   private scene: Phaser.Scene;
   private root: HTMLElement;
@@ -47,11 +52,16 @@ export class HUD {
     this.startRateTracking();
     this.updateChapterProgress();
     this.updateBossButtonState();
+    this.updateTaskHint();
   }
 
   unmount() {
     this.root.style.display = 'none';
     this.stopRateTracking();
+    if (this.taskHintRaf !== null) {
+      cancelAnimationFrame(this.taskHintRaf);
+      this.taskHintRaf = null;
+    }
   }
 
   private injectIcons() {
@@ -204,7 +214,75 @@ export class HUD {
     bus.on(EVT.PRESTIGE_AVAILABLE, () => this.showPrestigeModal());
     bus.on(EVT.BOSS_TRIGGER, () => this.updateBossButtonState());
     bus.on(EVT.BOSS_DEFEATED, () => this.updateBossButtonState());
+    bus.on(EVT.PRESTIGE_AVAILABLE, () => this.updateTaskHint());
+    bus.on(EVT.BOSS_TRIGGER, () => this.updateTaskHint());
+    bus.on(EVT.BOSS_DEFEATED, () => this.updateTaskHint());
+    bus.on(EVT.CHAPTER_CHANGED, () => this.updateTaskHint());
+    bus.on(EVT.MILESTONE_REACHED, () => this.updateTaskHint());
+    bus.on(EVT.GOLD_CHANGED, () => this.scheduleTaskHint());
     bus.on(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
+  }
+
+  // 任务提示 RAF 节流：GOLD_CHANGED 高频触发时合并为一帧一次
+  private taskHintRaf: number | null = null;
+  private scheduleTaskHint() {
+    if (this.taskHintRaf !== null) return;
+    this.taskHintRaf = requestAnimationFrame(() => {
+      this.taskHintRaf = null;
+      this.updateTaskHint();
+    });
+  }
+
+  /** 左侧任务提示：根据 storyProgress / 教程状态 / 章节进度生成提示文字 */
+  updateTaskHint() {
+    const el = document.getElementById('task-hint');
+    if (!el) return;
+    const prog = GameState.storyProgress || '';
+    const ch = GameState.chapterId;
+    const tutorial = (this.scene as unknown as TaskHintScene).tutorialState ?? 'done';
+
+    // 章节进度百分比
+    const target = GameState.chapter.targetGold;
+    const total = GameState.save.totalGold;
+    let pct = 0;
+    if (target > 0n) {
+      if (total >= target) pct = 100;
+      else {
+        const tn = fromBig(target);
+        pct = isFinite(tn) && tn > 0 ? Math.min(99, (fromBig(total) / tn) * 100) : 0;
+      }
+    }
+
+    // 第 1 章教程阶段优先（tutorialStage 未到 done 时覆盖 storyProgress 提示）
+    if (ch === 1 && tutorial !== 'done') {
+      let title = '当前任务';
+      let body = '';
+      if (tutorial === 'intro' || tutorial === 'await_peg') body = '在左侧【钉子】商店选一枚 +1 钉，放到网格上';
+      else if (tutorial === 'await_drop') body = '点击上方投放区，让弹珠落下';
+      else if (tutorial === 'marbles') body = '解锁了元素弹珠！可在【弹珠】面板购买并选中';
+      el.innerHTML = `<span class="task-title">${title}</span><span class="task-body">${body}</span>`;
+      el.classList.add('show');
+      return;
+    }
+
+    // 按 storyProgress 后缀分派提示
+    let title = `第 ${ch} 章 · ${GameState.chapter.name}`;
+    let body = '继续积累金币推进剧情';
+
+    if (prog.endsWith('_intro')) {
+      body = '章节开场，按对话引导探索';
+    } else if (prog.endsWith('_midpoint')) {
+      body = ch === 4 ? '幻彩守卫变色，留对应元素弹珠应对' : '继续提升运算力，准备迎战';
+    } else if (prog.endsWith('_revelation')) {
+      body = '贤者档案库揭示了真相，继续推进';
+    } else if (prog.endsWith('_boss')) {
+      body = 'Boss 已现身！点击右上【Boss战】按钮挑战';
+    } else if (prog.endsWith('_ready')) {
+      body = '点击右上【归零】进入下一周目';
+    }
+
+    el.innerHTML = `<span class="task-title">${title}</span><span class="task-body">${body}</span><span class="task-prog">进度 ${pct.toFixed(0)}%</span>`;
+    el.classList.add('show');
   }
 
   /** Boss 战按钮显隐：当前章节有 Boss 且未击败时显示 */
