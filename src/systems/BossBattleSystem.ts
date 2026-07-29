@@ -1,9 +1,12 @@
 // Boss 战斗系统：DOM 覆盖层弹窗式 Boss 战
-// 每章 75% 进度后弹出 Boss 战；击败 Boss 才能进入归零试炼
-// 三种 Boss 机制：
-//   - boss_skull     (骷髅守卫)：召唤护盾，需先击破护盾才能造成伤害
-//   - boss_ghost     (熵之幻影)：周期性虚化，仅在显形时承受伤害
-//   - boss_chameleon (幻彩守卫)：变色弱点，需点击对应元素按钮才能造成伤害
+// 每章 90% 进度后弹出 Boss 战；击败 Boss 才能进入归零试炼
+// 五个 Boss，三种机制（mechanic）：
+//   - shield  (护盾)：召唤护盾，需先击破护盾才能造成伤害
+//       boss_frost (霜卫,ch1) / boss_skull (骷髅守卫,ch2)
+//   - phase   (虚化)：周期性虚化，仅在显形时承受伤害
+//       boss_ghost (熵之幻影,ch3)
+//   - color   (变色)：变色弱点，需点击对应元素按钮才能造成伤害
+//       boss_chameleon (幻彩守卫,ch4) / boss_entropy (熵核,ch5)
 //
 // 所有 Boss 共用一套数值：
 //   - HP = 章节目标金币 × 0.5（在 bigint 域上做整数除法）
@@ -15,7 +18,8 @@ import { bus, EVT } from './EventBus';
 import { DIALOGUE_MAP, chapterBossId } from '../data/dialogues';
 import { DialogueSystem } from './DialogueSystem';
 
-type BossId = 'boss_skull' | 'boss_ghost' | 'boss_chameleon';
+type BossId = 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy';
+type BossMechanic = 'shield' | 'phase' | 'color';
 type ChameleonColor = 'fire' | 'ice' | 'thunder' | 'holy';
 
 interface BossState {
@@ -24,31 +28,46 @@ interface BossState {
   hp: bigint;
   maxHp: bigint;
   // 机制相关运行时状态
-  shield?: number;        // skull：当前护盾值（0=无护盾可直接打本体）
+  shield?: number;        // shield：当前护盾值（0=无护盾可直接打本体）
   shieldMax?: number;
-  visible?: boolean;      // ghost：是否处于显形（true=可承受伤害）
-  color?: ChameleonColor; // chameleon：当前弱点颜色
+  visible?: boolean;      // phase：是否处于显形（true=可承受伤害）
+  color?: ChameleonColor; // color：当前弱点颜色
   // 计时器
   phaseTimer: number;      // 距下次机制切换的秒数
   // 战斗是否已结束
   finished?: 'win' | 'flee';
 }
 
-const BOSS_INFO: Record<BossId, { name: string; desc: string; portrait: string }> = {
+const BOSS_INFO: Record<BossId, { name: string; desc: string; portrait: string; mechanic: BossMechanic }> = {
+  boss_frost: {
+    name: '霜卫',
+    desc: '北境远古的冰霜构装体，召唤冰盾护体。需先击破冰盾才能造成伤害。',
+    portrait: '/portraits/boss_frost.png',
+    mechanic: 'shield',
+  },
   boss_skull: {
     name: '骷髅守卫',
     desc: '会召唤骨盾，需先击破护盾才能造成伤害。点击【击破护盾】清除护盾。',
     portrait: '/portraits/boss_skull.png',
+    mechanic: 'shield',
   },
   boss_ghost: {
     name: '熵之幻影',
     desc: '会周期性虚化，虚化时无法造成伤害。等待显形时再冲击！',
     portrait: '/portraits/boss_ghost.png',
+    mechanic: 'phase',
   },
   boss_chameleon: {
     name: '幻彩守卫',
     desc: '弱点不停变色，只有点击对应元素的【冲击】才能造成伤害。',
     portrait: '/portraits/boss_chameleon.png',
+    mechanic: 'color',
+  },
+  boss_entropy: {
+    name: '熵核',
+    desc: '贤者机器的核心残片，弱点在混沌中不断切换，只有点击对应元素才能造成伤害。',
+    portrait: '/portraits/boss_entropy.png',
+    mechanic: 'color',
   },
 };
 
@@ -102,24 +121,32 @@ export class BossBattleSystem {
     const hpNum = Math.max(1, Math.floor(targetNum * 0.5));
     const hp = toBig(hpNum);
 
+    const mechanic = BOSS_INFO[id].mechanic;
     let shield: number | undefined;
     let shieldMax: number | undefined;
     let visible: boolean | undefined;
     let color: ChameleonColor | undefined;
+    let phaseTimer: number;
 
-    if (id === 'boss_skull') {
-      shieldMax = 5;
+    if (mechanic === 'shield') {
+      // boss_frost 护盾更少（新手章），boss_skull 护盾更多
+      shieldMax = id === 'boss_frost' ? 3 : 5;
       shield = shieldMax;
-    } else if (id === 'boss_ghost') {
+      phaseTimer = 8;
+    } else if (mechanic === 'phase') {
       visible = true;
-    } else if (id === 'boss_chameleon') {
+      phaseTimer = 4;
+    } else {
+      // color
       color = CHAMELEON_COLORS[Math.floor(Math.random() * CHAMELEON_COLORS.length)].key;
+      // boss_entropy 弱点切换更快（终章更有挑战）
+      phaseTimer = id === 'boss_entropy' ? 2 : 3;
     }
 
     this.state = {
       id, name: BOSS_INFO[id].name, hp, maxHp: hp,
       shield, shieldMax, visible, color,
-      phaseTimer: id === 'boss_skull' ? 8 : (id === 'boss_ghost' ? 4 : 3),
+      phaseTimer,
     };
 
     this.ensureRoot();
@@ -186,13 +213,14 @@ export class BossBattleSystem {
 
     // 阶段提示
     let phaseText = '';
-    if (this.state.id === 'boss_skull') {
+    if (info.mechanic === 'shield') {
       phaseText = this.state.shield && this.state.shield > 0
         ? `护盾 ×${this.state.shield}（需击破）· ${this.state.phaseTimer}s 后补盾`
         : `本体暴露！${this.state.phaseTimer}s 后召唤新护盾`;
-    } else if (this.state.id === 'boss_ghost') {
+    } else if (info.mechanic === 'phase') {
       phaseText = this.state.visible ? `显形中！${this.state.phaseTimer}s 后虚化` : `虚化中…${this.state.phaseTimer}s 后显形`;
-    } else if (this.state.id === 'boss_chameleon') {
+    } else {
+      // color
       const c = CHAMELEON_COLORS.find(x => x.key === this.state!.color)!;
       phaseText = `弱点：<span style="color:${c.hex}; font-weight:600;">${c.name}</span> · ${this.state.phaseTimer}s 后切换`;
     }
@@ -205,8 +233,8 @@ export class BossBattleSystem {
     const body = this.root.querySelector<HTMLElement>('#boss-body')!;
     body.innerHTML = '';
 
-    if (this.state.id === 'boss_skull') {
-      // 骷髅：护盾存在时只能"击破护盾"，护盾消失后才能"冲击本体"
+    if (info.mechanic === 'shield') {
+      // 护盾机制：护盾存在时只能"击破护盾"，护盾消失后才能"冲击本体"
       const hasShield = this.state.shield && this.state.shield > 0;
       const btn = document.createElement('button');
       btn.className = 'btn primary';
@@ -226,24 +254,24 @@ export class BossBattleSystem {
         btn.addEventListener('click', () => this.attack(1));
       }
       body.appendChild(btn);
-    } else if (this.state.id === 'boss_ghost') {
-      // 幻影：显形时可冲击
+    } else if (info.mechanic === 'phase') {
+      // 虚化机制：显形时可冲击
       const btn = document.createElement('button');
       btn.className = 'btn primary';
       btn.style.cssText = 'width:100%; min-height:48px; font-size:14px;';
       const cost = this.attackCost();
       const afford = GameState.gold >= cost;
       if (this.state.visible) {
-        btn.textContent = `冲击幻影核心！消耗 ${formatNum(cost)} 金币`;
+        btn.textContent = `冲击核心！消耗 ${formatNum(cost)} 金币`;
         if (!afford) btn.setAttribute('disabled', 'true');
         btn.addEventListener('click', () => this.attack(1.5));
       } else {
-        btn.textContent = '幻影虚化中，无法攻击…';
+        btn.textContent = '虚化中，无法攻击…';
         btn.setAttribute('disabled', 'true');
       }
       body.appendChild(btn);
-    } else if (this.state.id === 'boss_chameleon') {
-      // 变色守卫：4 个元素按钮，只有匹配颜色的造成伤害
+    } else {
+      // 变色机制：4 个元素按钮，只有匹配颜色的造成伤害
       const wrap = document.createElement('div');
       wrap.style.cssText = 'display:grid; grid-template-columns:1fr 1fr; gap:8px;';
       for (const c of CHAMELEON_COLORS) {
@@ -286,7 +314,9 @@ export class BossBattleSystem {
   }
 
   private breakShield() {
-    if (!this.state || this.state.id !== 'boss_skull') return;
+    if (!this.state) return;
+    const mechanic = BOSS_INFO[this.state.id].mechanic;
+    if (mechanic !== 'shield') return;
     const cost = this.attackCost();
     if (GameState.gold < cost) return;
     GameState.spendGold(cost);
@@ -319,19 +349,21 @@ export class BossBattleSystem {
 
   private nextPhase() {
     if (!this.state) return;
-    if (this.state.id === 'boss_skull') {
+    const mechanic = BOSS_INFO[this.state.id].mechanic;
+    if (mechanic === 'shield') {
       // 每隔 8 秒重新召唤护盾
       this.state.shield = this.state.shieldMax ?? 5;
       this.state.phaseTimer = 8;
-    } else if (this.state.id === 'boss_ghost') {
+    } else if (mechanic === 'phase') {
       // 切换显形/虚化（显形 4s，虚化 3s）
       this.state.visible = !this.state.visible;
       this.state.phaseTimer = this.state.visible ? 4 : 3;
-    } else if (this.state.id === 'boss_chameleon') {
-      // 每 3 秒切换弱点
+    } else {
+      // color：切换弱点
       const others = CHAMELEON_COLORS.filter(c => c.key !== this.state!.color);
       this.state.color = others[Math.floor(Math.random() * others.length)].key;
-      this.state.phaseTimer = 3;
+      // boss_entropy 弱点切换更快（终章）
+      this.state.phaseTimer = this.state.id === 'boss_entropy' ? 2 : 3;
     }
   }
 

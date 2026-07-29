@@ -6,8 +6,8 @@
 //   vera  — 薇拉（御姐，金辉城的精英炼金术师，第3章加入）
 //   boss_skull / boss_ghost / boss_chameleon — 各章 Boss
 
-export type SpeakerId = 'linn' | 'zero' | 'lily' | 'vera' | 'narrator' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon';
-export type PortraitId = 'linn' | 'zero' | 'lily' | 'vera' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon';
+export type SpeakerId = 'linn' | 'zero' | 'lily' | 'vera' | 'narrator' | 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy';
+export type PortraitId = 'linn' | 'zero' | 'lily' | 'vera' | 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy';
 
 export interface DialogueLine {
   speaker: SpeakerId;
@@ -98,11 +98,27 @@ export const DIALOGUES: Dialogue[] = [
     ],
   },
   {
+    id: 'ch1_boss',
+    chapter: 1,
+    lines: [
+      { speaker: 'narrator', text: '——遗迹深处传来沉重的脚步声，地面结起白霜——' },
+      { speaker: 'boss_frost', portrait: 'boss_frost', text: '……冰封……千年……汝……何人……' },
+      { speaker: 'linn', portrait: 'linn', text: '什、什么东西！它全身都是冰！' },
+      { speaker: 'zero', portrait: 'zero', text: '霜卫。北境最古老的守护构装体，比我的记忆还古老。' },
+      { speaker: 'boss_frost', portrait: 'boss_frost', text: '……遗迹……不可……擅入……冻结……汝……' },
+      { speaker: 'zero', portrait: 'zero', text: '它在召唤冰盾护体。先击碎它的冰盾，才能伤到本体。' },
+      { speaker: 'linn', portrait: 'linn', text: '可是它好大……我、我有点怕。' },
+      { speaker: 'zero', portrait: 'zero', text: '别怕。用你的弹珠冲击它的冰盾。每一次冲击都会消耗金币，但这是唯一的办法。' },
+      { speaker: 'linn', portrait: 'linn', text: '好……我试试！为了活下去，我不能退缩！' },
+    ],
+  },
+  {
     id: 'ch1_prestige_ready',
     chapter: 1,
     lines: [
-      { speaker: 'zero', portrait: 'zero', text: '你的累计金币已经突破了"零号镇"的临界值。' },
-      { speaker: 'zero', portrait: 'zero', text: '是时候进行"归零试炼"了。' },
+      { speaker: 'linn', portrait: 'linn', text: '霜卫……散了！它化成了一堆冰晶。' },
+      { speaker: 'zero', portrait: 'zero', text: '你做得很好，林恩。冰晶里凝着一枚数晶——你的第一枚。' },
+      { speaker: 'zero', portrait: 'zero', text: '而你的累计金币也已经突破了"零号镇"的临界值。是时候进行"归零试炼"了。' },
       { speaker: 'linn', portrait: 'linn', text: '归零？要把一切都清空吗？' },
       { speaker: 'zero', portrait: 'zero', text: '金币、钉子、自动器会归零，但你将获得"数晶"。' },
       { speaker: 'zero', portrait: 'zero', text: '数晶可用于永久加成，下一周目你会更强大。' },
@@ -421,9 +437,26 @@ export const DIALOGUES: Dialogue[] = [
     ],
   },
   {
+    id: 'ch5_boss',
+    chapter: 5,
+    lines: [
+      { speaker: 'narrator', text: '——无限回廊的核心深处，一团混沌的暗影凝聚成形——' },
+      { speaker: 'boss_entropy', portrait: 'boss_entropy', text: '……吾乃……熵之核心……贤者机器……最后的残片……' },
+      { speaker: 'linn', portrait: 'linn', text: '这就是……贤者机器的核心？它在说话！' },
+      { speaker: 'zero', portrait: 'zero', text: '熵核。它是我曾经对抗熵增失败后留下的……伤口。' },
+      { speaker: 'boss_entropy', portrait: 'boss_entropy', text: '……运算……无意义……一切……终将……归零……' },
+      { speaker: 'vera', portrait: 'vera', text: '它的核心在不断切换频率——像是在用四种元素保护自己。' },
+      { speaker: 'lily', portrait: 'lily', text: '林恩哥哥！我能看见——它的弱点一直在变颜色！' },
+      { speaker: 'zero', portrait: 'zero', text: '只有点击对应元素的冲击才能伤到它。它的切换比幻彩守卫更快——这是最后的考验。' },
+      { speaker: 'linn', portrait: 'linn', text: '大家……谢谢你一直陪着我。这最后一战，我们一起拿下！' },
+    ],
+  },
+  {
     id: 'ch5_prestige_ready',
     chapter: 5,
     lines: [
+      { speaker: 'linn', portrait: 'linn', text: '熵核……被击碎了！它化成无数光点散入回廊。' },
+      { speaker: 'zero', portrait: 'zero', text: '伤口愈合了。熵增……暂时被对冲了。' },
       { speaker: 'zero', portrait: 'zero', text: '弹珠永无止境地循环——这就是"炼金"的真谛。' },
       { speaker: 'linn', portrait: 'linn', text: '每一次归零，都是为了新的开始。' },
       { speaker: 'lily', portrait: 'lily', text: '莉莉会一直看着数字飞来飞去！' },

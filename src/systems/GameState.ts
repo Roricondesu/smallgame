@@ -514,7 +514,7 @@ class GameStateClass {
       bus.emit(EVT.MILESTONE_REACHED, { type: 'revelation', chapter: 4 });
     }
 
-    // 90% Boss 战触发（仅有 Boss 的章节：2/3/4）
+    // 90% Boss 战触发（每章都有 Boss）
     if (this.currentBossId
       && this._save.totalGold >= ch.targetGold * 9n / 10n
       && !progress.endsWith('_boss') && !progress.endsWith('_ready')
@@ -538,12 +538,16 @@ class GameStateClass {
   }
 
   // ===== Boss 战系统 =====
-  /** 当前章节对应的 Boss ID（无 Boss 章节返回 null） */
-  get currentBossId(): 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | null {
-    if (this.chapterId === 2) return 'boss_skull';
-    if (this.chapterId === 3) return 'boss_ghost';
-    if (this.chapterId === 4) return 'boss_chameleon';
-    return null;
+  /** 当前章节对应的 Boss ID（每章都有 Boss） */
+  get currentBossId(): 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy' | null {
+    switch (this.chapterId) {
+      case 1: return 'boss_frost';
+      case 2: return 'boss_skull';
+      case 3: return 'boss_ghost';
+      case 4: return 'boss_chameleon';
+      case 5: return 'boss_entropy';
+      default: return null;
+    }
   }
 
   /** 当前章节是否已击败 Boss */

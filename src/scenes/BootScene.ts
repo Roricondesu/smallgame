@@ -16,6 +16,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('portrait_boss_skull', '/portraits/boss_skull.png');
     this.load.image('portrait_boss_ghost', '/portraits/boss_ghost.png');
     this.load.image('portrait_boss_chameleon', '/portraits/boss_chameleon.png');
+    this.load.image('portrait_boss_frost', '/portraits/boss_frost.png');
+    this.load.image('portrait_boss_entropy', '/portraits/boss_entropy.png');
 
     // 元素图标（HUD 弹珠选择器 / 图鉴用）
     this.load.image('skill_fire', '/skills/fire.png');

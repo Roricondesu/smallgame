@@ -13,9 +13,11 @@ const SPEAKER_NAMES: Record<string, string> = {
   zero: '零号',
   lily: '莉莉',
   vera: '薇拉',
+  boss_frost: '霜卫',
   boss_skull: '骷髅守卫',
   boss_ghost: '熵之幻影',
   boss_chameleon: '幻彩守卫',
+  boss_entropy: '熵核',
 };
 
 /** 立绘文件映射 */
@@ -24,9 +26,11 @@ const PORTRAIT_FILES: Record<string, string> = {
   zero: 'zero.png',
   lily: 'lily.png',
   vera: 'vera.png',
+  boss_frost: 'boss_frost.png',
   boss_skull: 'boss_skull.png',
   boss_ghost: 'boss_ghost.png',
   boss_chameleon: 'boss_chameleon.png',
+  boss_entropy: 'boss_entropy.png',
 };
 
 export class DialogueSystem {

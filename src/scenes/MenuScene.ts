@@ -679,6 +679,14 @@ export class MenuScene extends Phaser.Scene {
         join: '第 3 章 · 金辉城（炼金术师协会）',
       },
       {
+        key: 'boss_frost',
+        name: '霜卫',
+        title: '第 1 章 Boss · 北境远古守护者',
+        portrait: '/portraits/boss_frost.png',
+        desc: '北境最古老的冰霜构装体，比零号的记忆还要久远。感应到遗迹被惊扰后苏醒，召唤冰盾护体。是林恩遇到的第一位强敌，也是他踏入炼金世界的第一道门槛。',
+        join: '第 1 章 · 贤者遗迹外',
+      },
+      {
         key: 'boss_skull',
         name: '骷髅守卫',
         title: '第 2 章 Boss · 贤者遗迹守护者',
@@ -701,6 +709,14 @@ export class MenuScene extends Phaser.Scene {
         portrait: '/portraits/boss_chameleon.png',
         desc: '零之圣殿的最终防线，能模仿弹珠的运算——乘法会被它乘回来，指数会被反弹。弱点会变色切换，需要在对应颜色时使用对应元素弹珠才能造成有效伤害。莉莉的"数值视觉"能解析它的模式。',
         join: '第 4 章 · 零之圣殿',
+      },
+      {
+        key: 'boss_entropy',
+        name: '熵核',
+        title: '第 5 章 Boss · 贤者机器的核心残片',
+        portrait: '/portraits/boss_entropy.png',
+        desc: '零号昔日对抗熵增失败后留下的伤口，凝聚成形的混沌核心。弱点在四种元素间高速切换，比幻彩守卫更难捕捉。是林恩一行人在无限回廊面对的最终考验，击败它才能暂时对冲熵增。',
+        join: '第 5 章 · 无限回廊核心',
       },
     ];
 

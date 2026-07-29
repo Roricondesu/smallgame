@@ -5,14 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>弹珠炼金术 · Pinball Alchemy</title>
   <style>
-    /* 自定义全局字体 */
-    @font-face {
-      font-family: 'Alimama FangYuanTi VF Thin';
-      src: url('/fonts/AlimamaFangYuanTiVF-Thin-2.ttf') format('truetype');
-      font-weight: 400;
-      font-style: normal;
-      font-display: swap;
-    }
+    /* 全局字体：Z Labs RoundPix 像素字体 */
+    @import url("https://fontsapi.zeoseven.com/995/main/result.css");
 
     :root {
       /* 简约配色 */
@@ -45,7 +39,8 @@
       width: 100%; height: 100%;
       background: var(--bg-2);
       color: var(--text);
-      font-family: 'Alimama FangYuanTi VF Thin', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      font-weight: normal;
       overflow: hidden;
       user-select: none;
       -webkit-tap-highlight-color: transparent;
@@ -1077,7 +1072,7 @@
     }
     #loader.hide { opacity: 0; visibility: hidden; pointer-events: none; }
     .loader-title {
-      font-family: "Alimama FangYuanTi VF Thin", sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", sans-serif;
       font-size: clamp(28px, 6vw, 48px);
       color: #ffffff;
       letter-spacing: 4px;
@@ -1085,7 +1080,7 @@
       animation: loaderFadeUp 0.8s ease 0.1s forwards;
     }
     .loader-sub {
-      font-family: "Alimama FangYuanTi VF Thin", sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", sans-serif;
       font-size: clamp(11px, 2.4vw, 16px);
       color: var(--gold);
       letter-spacing: 6px;
@@ -1131,7 +1126,7 @@
       max-width: 50%;
     }
     .menu-title {
-      font-family: "Alimama FangYuanTi VF Thin", sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", sans-serif;
       color: #ffffff;
       font-size: clamp(28px, 5vw, 44px);
       line-height: 1;
@@ -1140,7 +1135,7 @@
       text-shadow: 0 2px 12px rgba(0,0,0,0.5);
     }
     .menu-subtitle {
-      font-family: "Alimama FangYuanTi VF Thin", sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", sans-serif;
       color: var(--gold);
       font-size: clamp(11px, 2vw, 15px);
       letter-spacing: 8px;
@@ -1150,7 +1145,7 @@
     }
     .menu-link {
       pointer-events: auto;
-      font-family: "Alimama FangYuanTi VF Thin", sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", sans-serif;
       color: rgba(255,255,255,0.85);
       font-size: clamp(16px, 2.4vw, 22px);
       letter-spacing: 2px;
@@ -1177,7 +1172,7 @@
     .menu-link.danger:hover { color: var(--bad); }
     .menu-link.danger::before { background: var(--bad); }
     .menu-slot-hint {
-      font-family: "Alimama FangYuanTi VF Thin", sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", sans-serif;
       color: var(--crystal);
       font-size: clamp(11px, 1.6vw, 13px);
       letter-spacing: 1px;
@@ -1187,7 +1182,7 @@
     .menu-footer {
       position: fixed;
       bottom: 16px; left: clamp(48px, 10vw, 140px);
-      font-family: "Alimama FangYuanTi VF Thin", sans-serif;
+      font-family: "Z Labs RoundPix 12px M CN", sans-serif;
       color: #484f58;
       font-size: 11px;
       z-index: 5;
