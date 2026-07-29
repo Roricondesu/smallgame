@@ -679,19 +679,19 @@ export class MenuScene extends Phaser.Scene {
         join: '第 3 章 · 金辉城（炼金术师协会）',
       },
       {
-        key: 'boss_frost',
-        name: '霜卫',
-        title: '第 1 章 Boss · 北境远古守护者',
-        portrait: '/portraits/boss_frost.png',
-        desc: '北境最古老的冰霜构装体，比零号的记忆还要久远。感应到遗迹被惊扰后苏醒，召唤冰盾护体。是林恩遇到的第一位强敌，也是他踏入炼金世界的第一道门槛。',
+        key: 'boss_skull',
+        name: '骷髅守卫',
+        title: '第 1 章 Boss · 贤者遗迹守护者',
+        portrait: '/portraits/boss_skull.png',
+        desc: '贤者用来看守核心区域的构装体守护者，感应到封印被解除后苏醒。会召唤骨盾抵挡攻击，需要先击破护盾才能伤到本体。是林恩遇到的第一位强敌，也是踏入炼金世界的第一道门槛。',
         join: '第 1 章 · 贤者遗迹外',
       },
       {
-        key: 'boss_skull',
-        name: '骷髅守卫',
-        title: '第 2 章 Boss · 贤者遗迹守护者',
-        portrait: '/portraits/boss_skull.png',
-        desc: '贤者用来看守核心区域的构装体守护者，感应到封印被解除后苏醒。会召唤骨盾抵挡攻击，需要先击破护盾才能伤到本体。会阻止任何试图带走遗迹秘密的人。',
+        key: 'boss_frost',
+        name: '霜卫',
+        title: '第 2 章 Boss · 北境远古守护者',
+        portrait: '/portraits/boss_frost.png',
+        desc: '北境最古老的冰霜构装体，比零号的记忆还要久远。感应到遗迹被惊扰后苏醒，召唤冰盾护体。投掷的冰球数值更大更快，是林恩在遗迹深处遇到的强敌。',
         join: '第 2 章 · 贤者遗迹深处',
       },
       {
@@ -720,7 +720,46 @@ export class MenuScene extends Phaser.Scene {
       },
     ];
 
-    list.innerHTML = characters.map(c => `
+    // 场景图鉴
+    const scenes: Array<{ key: string; name: string; chapter: string; image: string; desc: string }> = [
+      {
+        key: 'ch1',
+        name: '零号镇 · 北境小村',
+        chapter: '第 1 章',
+        image: '/backgrounds/ch1.png',
+        desc: '贤者遗迹外北境山脚下的寂静小村。暴雪将至的黄昏，木屋炊烟袅袅，雪线已压到屋檐。林恩被埋在遗迹外的雪堆中，由零号刨出苏醒——故事从这里开始。',
+      },
+      {
+        key: 'ch2',
+        name: '贤者遗迹',
+        chapter: '第 2 章',
+        image: '/backgrounds/ch2.png',
+        desc: '深埋山腹的远古炼金圣所。断裂的石柱、发光的符文水晶、散落的旧式弹珠机构残骸。封印着莉莉的水晶棺就在遗迹深处，骷髅守卫与霜卫在此驻守。',
+      },
+      {
+        key: 'ch3',
+        name: '金辉城',
+        chapter: '第 3 章',
+        image: '/backgrounds/ch3.png',
+        desc: '大陆最繁华的炼金都市，以黄金与机械闻名。灯火通明的市街、巍峨的炼金术师协会、远处的钟楼。熵增的阴影悄然蔓延，薇拉在此加入队伍。',
+      },
+      {
+        key: 'ch4',
+        name: '零之圣殿',
+        chapter: '第 4 章',
+        image: '/backgrounds/ch4.png',
+        desc: '隐于极地的远古圣殿，白银殿堂与冰晶吊灯，圣光从穹顶倾泻而下。贤者机器的最后守护力量在此驻守——幻彩守卫能模仿一切弹珠运算。',
+      },
+      {
+        key: 'ch5',
+        name: '无限回廊',
+        chapter: '第 5 章',
+        image: '/backgrounds/ch5.png',
+        desc: '贤者机器的核心区域，现实在此破碎。混沌数据流奔涌、碎片化的时空漂浮，紫红色的熵核在尽头脉动。林恩一行人面对最终的考验。',
+      },
+    ];
+
+    const charCards = characters.map(c => `
       <div class="codex-card">
         <div class="codex-portrait">
           <img src="${c.portrait}" alt="${c.name}" onerror="this.style.opacity=0.2;this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22%3E%3Crect width=%22128%22 height=%22128%22 fill=%22%23222%22/%3E%3C/svg%3E'"/>
@@ -733,6 +772,26 @@ export class MenuScene extends Phaser.Scene {
         </div>
       </div>
     `).join('');
+
+    const sceneCards = scenes.map(s => `
+      <div class="codex-card scene-card">
+        <div class="codex-scene-img">
+          <img src="${s.image}" alt="${s.name}" onerror="this.style.opacity=0.2"/>
+        </div>
+        <div class="codex-info">
+          <div class="codex-name">${s.name}</div>
+          <div class="codex-title">${s.chapter}</div>
+          <div class="codex-desc">${s.desc}</div>
+        </div>
+      </div>
+    `).join('');
+
+    list.innerHTML = `
+      <div class="codex-section-title">${svgIcon('chapter', 14)} 角色 · Character</div>
+      ${charCards}
+      <div class="codex-section-title">${svgIcon('chapter', 14)} 场景 · Scene</div>
+      ${sceneCards}
+    `;
   }
 
   // ===== 关于 =====
