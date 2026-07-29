@@ -118,11 +118,13 @@ export class HUD {
     this.showToast(`归零进度 ${pct.toFixed(1)}%`, 'prestige');
   }
 
-  /** 根据是否达到归零条件切换按钮高亮态 */
+  /** 归零按钮：仅在 _ready（达标且 Boss 已击败）时显示，否则隐藏 */
   private updatePrestigeButtonState() {
     const btn = document.getElementById('btn-prestige');
     if (!btn) return;
-    const ready = GameState.save.totalGold >= GameState.chapter.targetGold;
+    const ready = GameState.save.totalGold >= GameState.chapter.targetGold
+      && (!GameState.currentBossId || GameState.isBossDefeated());
+    btn.style.display = ready ? 'flex' : 'none';
     btn.classList.toggle('ready', ready);
   }
 
@@ -232,10 +234,10 @@ export class HUD {
     bus.on(EVT.BOSS_DEFEATED, () => this.updateBossButtonState());
     bus.on(EVT.PRESTIGE_AVAILABLE, () => this.updateTaskHint());
     bus.on(EVT.BOSS_TRIGGER, () => this.updateTaskHint());
-    bus.on(EVT.BOSS_DEFEATED, () => this.updateTaskHint());
+    bus.on(EVT.BOSS_DEFEATED, () => { this.updateTaskHint(); this.updatePrestigeButtonState(); });
     bus.on(EVT.CHAPTER_CHANGED, () => this.updateTaskHint());
     bus.on(EVT.MILESTONE_REACHED, () => this.updateTaskHint());
-    bus.on(EVT.GOLD_CHANGED, () => this.scheduleTaskHint());
+    bus.on(EVT.GOLD_CHANGED, () => { this.scheduleTaskHint(); this.updatePrestigeButtonState(); });
     bus.on(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
   }
 
@@ -306,16 +308,15 @@ export class HUD {
     el.classList.add('show');
   }
 
-  /** Boss 战按钮显隐：当前章节有 Boss 且未击败时显示 */
+  /** Boss 战按钮显隐：仅当达到 90% 进度（剧情 _boss）且未击败时显示 */
   private updateBossButtonState() {
     const btn = document.getElementById('btn-boss');
     if (!btn) return;
     const id = GameState.currentBossId;
-    const shouldShow = !!id && !GameState.isBossDefeated();
+    const triggered = !!id && GameState.save.storyProgress.endsWith('_boss');
+    const shouldShow = triggered && !GameState.isBossDefeated();
     btn.style.display = shouldShow ? 'flex' : 'none';
-    // 当 Boss 战剧情触发后高亮
-    const triggered = GameState.save.storyProgress.endsWith('_boss');
-    btn.classList.toggle('ready', shouldShow && triggered);
+    btn.classList.toggle('ready', shouldShow);
   }
 
   private updateHeader() {

@@ -32,6 +32,8 @@ interface Ball {
   thunderCharges?: number;
   /** boss 球生成时间戳（用于超时清理，防止卡在场景中） */
   bossSpawnTime?: number;
+  /** boss 球每帧施加的向上力（负重力效果） */
+  bossForce?: number;
 }
 
 // Matter 钉子对象
@@ -108,6 +110,7 @@ export class GameScene extends Phaser.Scene {
   // 布局相关引用（resize 时需重新定位的元素）
   private gridBg!: Phaser.GameObjects.Graphics;
   private gridBgRect!: Phaser.GameObjects.Rectangle;
+  private bgImage!: Phaser.GameObjects.Image;   // 章节背景图
   private wallVisuals: Phaser.GameObjects.Rectangle[] = [];
   private wallBodies: MatterJS.Body[] = [];
   private readonly wallW = 8;
@@ -148,7 +151,8 @@ export class GameScene extends Phaser.Scene {
     // 先计算布局参数（gridX/gridY/settleY），再创建元素，最后 applyLayout 统一定位
     this.computeLayout();
 
-    // 六边形蜂窝网格背景容器（点阵 + 半透明底板），drawGridBg 在 applyLayout 中绘制
+    // 章节背景图（最底层）+ 六边形点阵覆盖层
+    this.bgImage = this.add.image(DESIGN_W / 2, DESIGN_H / 2, `bg_ch${GameState.chapterId}`).setDepth(-100);
     this.gridBg = this.add.graphics();
     this.gridBgRect = this.add.rectangle(0, 0, 0, 0, 0x000000, 0.2).setStrokeStyle(1, 0x30363d).setDepth(-1);
 
@@ -317,6 +321,10 @@ export class GameScene extends Phaser.Scene {
         this.tryPlayDialogue('ch4_revelation');
       }
     });
+    bus.on(EVT.CHAPTER_CHANGED, () => {
+      // 切换章节背景
+      this.bgImage.setTexture(`bg_ch${GameState.chapterId}`);
+    });
 
     // 定时器
     this.time.addEvent({ delay: 100, loop: true, callback: this.tickAuto, callbackScope: this });
@@ -409,6 +417,8 @@ export class GameScene extends Phaser.Scene {
   // 重新应用布局：绘制网格背景、定位结算槽、重建墙体、重定位钉子、更新 overlay
   private applyLayout() {
     this.computeLayout();
+    // 背景图拉伸覆盖设计区域（背景图比例 ≈ 设计区域比例，几乎无变形）
+    this.bgImage.setPosition(DESIGN_W / 2, DESIGN_H / 2).setDisplaySize(DESIGN_W, DESIGN_H);
     this.drawGridBg();
     this.repositionSettleSlots();
     this.rebuildWalls();
@@ -617,8 +627,15 @@ export class GameScene extends Phaser.Scene {
     // 清理落底弹珠 + 停滞球（速度过低且存在时间过长）
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const ball = this.balls[i];
-      // boss 球：到达顶部扣金币；超时未到顶则消散（不扣金币，防止卡死）
+      // boss 球：每帧持续向上加速（负重力效果），到达顶部扣金币，超时消散
       if (ball.source === 'boss') {
+        const force = ball.bossForce ?? 0.5;
+        const v = ball.sprite.body?.velocity;
+        if (v) {
+          // 向上加速，上限 -8 防止过快
+          const newVy = Math.max(v.y - force * 0.15, -8);
+          ball.sprite.setVelocityY(newVy);
+        }
         if (ball.sprite.y < 0) {
           this.bossBallReachedTop(ball);
           this.destroyBall(i);
@@ -1175,19 +1192,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** 按 boss 强度返回弹珠参数：越靠后章节，球越大、越快、数值越高、向上加速越强 */
-  private bossBallConfig(): { valDivisor: bigint; speed: number; gravityScale: number; radius: number } {
+  private bossBallConfig(): { valDivisor: bigint; speed: number; force: number; radius: number } {
     const ch = GameState.chapterId;
     switch (ch) {
-      case 1:  return { valDivisor: 40n, speed: 2.6, gravityScale: -0.4, radius: 8 };
-      case 2:  return { valDivisor: 30n, speed: 3.0, gravityScale: -0.5, radius: 9 };
-      case 3:  return { valDivisor: 25n, speed: 3.4, gravityScale: -0.6, radius: 9 };
-      case 4:  return { valDivisor: 20n, speed: 3.8, gravityScale: -0.7, radius: 10 };
-      case 5:  return { valDivisor: 15n, speed: 4.2, gravityScale: -0.8, radius: 11 };
-      default: return { valDivisor: 30n, speed: 3.0, gravityScale: -0.5, radius: 9 };
+      case 1:  return { valDivisor: 40n, speed: 2.6, force: 0.4, radius: 8 };
+      case 2:  return { valDivisor: 30n, speed: 3.0, force: 0.5, radius: 9 };
+      case 3:  return { valDivisor: 25n, speed: 3.4, force: 0.6, radius: 9 };
+      case 4:  return { valDivisor: 20n, speed: 3.8, force: 0.7, radius: 10 };
+      case 5:  return { valDivisor: 15n, speed: 4.2, force: 0.8, radius: 11 };
+      default: return { valDivisor: 30n, speed: 3.0, force: 0.5, radius: 9 };
     }
   }
 
-  /** 生成一个 boss 球：从底部向上飞，受负重力（向上加速），value 随章节递增 */
+  /** 生成一个 boss 球：从底部向上飞，每帧施加向上力（负重力），value 随章节递增 */
   private spawnBossBall() {
     if (!this.bossActive) return;
     const cfg = this.bossBallConfig();
@@ -1204,14 +1221,9 @@ export class GameScene extends Phaser.Scene {
       label: 'ball',
     });
     sprite.setDisplaySize(cfg.radius * 2, cfg.radius * 2);
-    // 负重力：球持续向上加速，越强 boss 加速越快，越难拦截
-    const body = sprite.body as MatterJS.Body | null;
-    if (body) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (body as any).gravityScale = cfg.gravityScale;
-      this.ballLabels.add(body);
-    }
+    sprite.setIgnoreGravity(true);   // 关闭世界重力，由 update 每帧施加向上力
     sprite.setVelocity(Phaser.Math.Between(-1, 1), -cfg.speed);
+    if (sprite.body) this.ballLabels.add(sprite.body as MatterJS.Body);
 
     const text = this.add.text(spawnX, spawnY - 14, formatNum(val), {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '11px',
@@ -1222,6 +1234,7 @@ export class GameScene extends Phaser.Scene {
       sprite, text, value: val, source: 'boss', golden: false, sageCopy: 0n,
       marble: null, poisonedPegs: undefined, thunderCharges: 0,
       bossSpawnTime: Date.now(),
+      bossForce: cfg.force,
     };
     this.balls.push(ball);
     this.ballBySprite.set(sprite, ball);

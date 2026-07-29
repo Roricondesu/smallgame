@@ -19,6 +19,13 @@ export class BootScene extends Phaser.Scene {
     this.load.image('portrait_boss_frost', '/portraits/boss_frost.png');
     this.load.image('portrait_boss_entropy', '/portraits/boss_entropy.png');
 
+    // 章节背景图
+    this.load.image('bg_ch1', '/backgrounds/ch1.png');
+    this.load.image('bg_ch2', '/backgrounds/ch2.png');
+    this.load.image('bg_ch3', '/backgrounds/ch3.png');
+    this.load.image('bg_ch4', '/backgrounds/ch4.png');
+    this.load.image('bg_ch5', '/backgrounds/ch5.png');
+
     // 元素图标（HUD 弹珠选择器 / 图鉴用）
     this.load.image('skill_fire', '/skills/fire.png');
     this.load.image('skill_ice', '/skills/ice.png');
