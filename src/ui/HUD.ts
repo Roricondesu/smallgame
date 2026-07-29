@@ -135,13 +135,19 @@ export class HUD {
       document.getElementById('modal-prestige')!.classList.remove('open');
       GameState.prestige(GameState.chapterId + 1);
       // 归零后直接进入下一章游戏，不再播放剧情
-      this.scene.scene.start('Game');
+      // 延迟到下一帧执行场景切换：让 modal 关闭动画与 DOM 清理先完成，避免画面卡死
+      requestAnimationFrame(() => {
+        this.scene.scene.start('Game');
+      });
     });
 
     document.getElementById('menu-home')!.addEventListener('click', () => {
       document.getElementById('modal-menu')!.classList.remove('open');
       GameState.saveGame();
-      this.scene.scene.start('Menu');
+      // 同样延迟场景切换，避免卡死
+      requestAnimationFrame(() => {
+        this.scene.scene.start('Menu');
+      });
     });
     document.getElementById('menu-save')!.addEventListener('click', () => {
       GameState.saveGame();
