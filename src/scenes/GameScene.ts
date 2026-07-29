@@ -8,7 +8,8 @@ import { PEG_MAP } from '../data/pegs';
 
 import { DIALOGUE_MAP, chapterIntroId, chapterMidpointId, chapterPrestigeReadyId } from '../data/dialogues';
 import { DialogueSystem } from '../systems/DialogueSystem';
-import { BossBattleSystem } from '../systems/BossBattleSystem';
+import { BossDialogueTrigger, BOSS_INFO } from '../systems/BossBattleSystem';
+import type { BossId } from '../systems/BossBattleSystem';
 import { bus, EVT } from '../systems/EventBus';
 import { HUD } from '../ui/HUD';
 import type { PegSave, MarbleConfig } from '../types';
@@ -19,7 +20,7 @@ interface Ball {
   sprite: Phaser.Physics.Matter.Image;
   text: Phaser.GameObjects.Text;
   value: bigint;
-  source: 'manual' | 'auto';
+  source: 'manual' | 'auto' | 'boss';
   golden: boolean;
   sageCopy: bigint;
   lastPegId?: string;
@@ -29,6 +30,8 @@ interface Ball {
   poisonedPegs?: Set<string>;
   /** 雷霆链击的剩余次数 */
   thunderCharges?: number;
+  /** boss 球生成时间戳（用于超时清理，防止卡在场景中） */
+  bossSpawnTime?: number;
 }
 
 // Matter 钉子对象
@@ -61,7 +64,20 @@ export class GameScene extends Phaser.Scene {
   private placeholderPegs: Map<string, PegSprite> = new Map();
   private hud!: HUD;
   private dialogue!: DialogueSystem;
-  private bossBattle!: BossBattleSystem;
+  private bossDialogue!: BossDialogueTrigger;
+
+  // ===== 场景内 Boss 战状态 =====
+  private bossActive = false;
+  private bossId: BossId | null = null;
+  private bossHp: bigint = 0n;
+  private bossMaxHp: bigint = 0n;
+  private bossSprite: Phaser.GameObjects.Image | null = null;
+  private bossNameText: Phaser.GameObjects.Text | null = null;
+  private bossHpBarBg: Phaser.GameObjects.Rectangle | null = null;
+  private bossHpBarFill: Phaser.GameObjects.Rectangle | null = null;
+  private bossHpText: Phaser.GameObjects.Text | null = null;
+  private bossBallTimer: Phaser.Time.TimerEvent | null = null;
+  private bossBallTexture!: string;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -145,7 +161,7 @@ export class GameScene extends Phaser.Scene {
       const rect = this.add.rectangle(0, 0, 0, 0, color, 0.15).setStrokeStyle(2, color, 0.8);
       this.settleSlots.push(rect);
       const txt = this.add.text(0, 0, isCenter ? '×2' : '×1', {
-        fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '14px', color: isCenter ? '#f0b429' : '#2db7a3',
+        fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '14px', color: isCenter ? '#f0b429' : '#2db7a3',
       }).setOrigin(0.5);
       this.settleTexts.push(txt);
     }
@@ -165,7 +181,7 @@ export class GameScene extends Phaser.Scene {
 
     // 连击显示 & 狂热 overlay（基于设计坐标系，applyLayout 会跟随重定位）
     this.comboDisplay = this.add.text(DESIGN_W - 20, 80, '', {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '16px', color: '#f0b429',
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '16px', color: '#f0b429',
     }).setOrigin(1, 0).setAlpha(0);
     this.frenzyOverlay = this.add.rectangle(0, 0, DESIGN_W, DESIGN_H, 0xf0b429, 0).setOrigin(0).setDepth(99);
 
@@ -237,9 +253,9 @@ export class GameScene extends Phaser.Scene {
     this.dialogue = new DialogueSystem();
     this.dialogue.mount();
 
-    // Boss 战系统
-    this.bossBattle = new BossBattleSystem();
-    this.bossBattle.mount(this.dialogue);
+    // Boss 对话触发器（场景内战斗逻辑由本场景直接处理）
+    this.bossDialogue = new BossDialogueTrigger();
+    this.bossDialogue.mount(this.dialogue);
 
     // Dev 模式：从 localStorage 恢复金币倍率
     if (localStorage.getItem('pa_setting_dev') === '1') {
@@ -286,6 +302,13 @@ export class GameScene extends Phaser.Scene {
       this.hud.showToast('Boss 已击败！归零之路已开', 'prestige');
       GameState.recheckChapterGoal();
     });
+    // 场景内 Boss 战：BOSS_TRIGGER 触发时启动场景战斗
+    bus.on(EVT.BOSS_TRIGGER, (id: unknown) => {
+      const bossId = id as BossId;
+      if (!bossId || GameState.isBossDefeated()) return;
+      if (this.bossActive) return;
+      this.startSceneBoss(bossId);
+    });
     bus.on(EVT.MILESTONE_REACHED, (payload: unknown) => {
       const p = payload as { type: string; chapter: number };
       if (p.type === 'midpoint') {
@@ -314,7 +337,8 @@ export class GameScene extends Phaser.Scene {
       GameState.saveGame();
       this.hud.unmount();
       this.dialogue?.unmount();
-      this.bossBattle?.unmount();
+      this.bossDialogue?.unmount();
+      this.cleanupSceneBoss();
       this.scale.off('resize', this.onResize, this);
     });
     this.events.on('pause', () => GameState.saveGame());
@@ -492,6 +516,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // 球 vs 球（玩家球与 boss 球抵消数值）
+    if (aIsBall && bIsBall) {
+      this.fireBallBall(bodyA, bodyB);
+      return;
+    }
+
     // 球 vs 墙
     if (aIsBall && this.wallLabels.has(bodyB)) {
       this.fireBallWall(bodyA);
@@ -501,6 +531,46 @@ export class GameScene extends Phaser.Scene {
       this.fireBallWall(bodyB);
       return;
     }
+  }
+
+  /** 球与球碰撞：玩家球抵消 boss 球数值 */
+  private fireBallBall(bodyA: MatterJS.Body, bodyB: MatterJS.Body) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sa = (bodyA as any).gameObject as Phaser.Physics.Matter.Image | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = (bodyB as any).gameObject as Phaser.Physics.Matter.Image | undefined;
+    if (!sa || !sb) return;
+    const ba = this.ballBySprite.get(sa);
+    const bb = this.ballBySprite.get(sb);
+    if (!ba || !bb) return;
+    // 只处理玩家球 vs boss 球
+    const playerBall = ba.source === 'boss' ? (bb.source === 'boss' ? null : bb) : (bb.source === 'boss' ? ba : null);
+    const bossBall = ba.source === 'boss' ? ba : (bb.source === 'boss' ? bb : null);
+    if (!playerBall || !bossBall) return;
+
+    // 数值抵消：较小者销毁，较大者减去较小者继续
+    if (playerBall.value === bossBall.value) {
+      this.spawnFloatText(bossBall.sprite.x, bossBall.sprite.y, `抵消 ${formatNum(bossBall.value)}`, 0x56d4dd);
+      this.destroyBallByRef(playerBall);
+      this.destroyBallByRef(bossBall);
+    } else if (playerBall.value > bossBall.value) {
+      playerBall.value -= bossBall.value;
+      playerBall.text.setText(formatNum(playerBall.value));
+      this.spawnFloatText(bossBall.sprite.x, bossBall.sprite.y, `抵消 ${formatNum(bossBall.value)}`, 0x56d4dd);
+      this.destroyBallByRef(bossBall);
+    } else {
+      bossBall.value -= playerBall.value;
+      bossBall.text.setText(formatNum(bossBall.value));
+      this.spawnFloatText(playerBall.sprite.x, playerBall.sprite.y, `抵消 ${formatNum(playerBall.value)}`, 0x56d4dd);
+      this.destroyBallByRef(playerBall);
+    }
+  }
+
+  /** 按 Ball 引用销毁（球间碰撞抵消时使用，不依赖数组下标） */
+  private destroyBallByRef(ball: Ball) {
+    const idx = this.balls.indexOf(ball);
+    if (idx < 0) return;
+    this.destroyBall(idx);
   }
 
   private fireBallPeg(ballBody: MatterJS.Body, pegBody: MatterJS.Body) {
@@ -524,6 +594,7 @@ export class GameScene extends Phaser.Scene {
 
   // 球撞墙：根据"墙体金币"技能结算额外金币（带 1 秒冷却防刷屏）
   private onBallWall(ball: Ball) {
+    if (ball.source === 'boss') return;   // boss 球不触发墙体金币
     const now = Date.now();
     const last = this.ballWallCooldown.get(ball) || 0;
     if (now - last < 1000) return;
@@ -546,6 +617,17 @@ export class GameScene extends Phaser.Scene {
     // 清理落底弹珠 + 停滞球（速度过低且存在时间过长）
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const ball = this.balls[i];
+      // boss 球：到达顶部扣金币；超时未到顶则消散（不扣金币，防止卡死）
+      if (ball.source === 'boss') {
+        if (ball.sprite.y < 0) {
+          this.bossBallReachedTop(ball);
+          this.destroyBall(i);
+        } else if (ball.bossSpawnTime && Date.now() - ball.bossSpawnTime > 20000) {
+          this.spawnFloatText(ball.sprite.x, ball.sprite.y, '消散', 0x888888);
+          this.destroyBall(i);
+        }
+        continue;
+      }
       // 落底结算
       if (ball.sprite.y > this.settleY + 50) {
         this.settleBall(ball);
@@ -635,7 +717,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const text = this.add.text(x, y - 14, formatNum(value), {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '11px',
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '11px',
       color: golden ? '#ffd700' : (marble ? '#' + marble.color.toString(16).padStart(6, '0') : '#ffffff'),
       stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(5);
@@ -672,6 +754,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onBallPeg(ball: Ball, ps: PegSprite) {
+    // boss 球：不被钉子运算（仅与玩家球抵消），但仍参与物理反弹
+    if (ball.source === 'boss') return;
     if (ball.lastPegId === ps.pegId) return;
     ball.lastPegId = ps.pegId;
 
@@ -793,6 +877,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private settleBall(ball: Ball) {
+    // boss 战激活时：玩家弹珠落底改为对 boss 造成伤害，不再加金币
+    if (this.bossActive) {
+      this.attackBossWithBall(ball);
+      return;
+    }
     // 判定边界与结算槽绘制保持一致：从 gridX 开始，宽度为网格宽度
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const slotW = gridW / BALANCE.bottomSlots;
@@ -887,7 +976,7 @@ export class GameScene extends Phaser.Scene {
 
     const label = this.pegLabel(cfg, peg);
     const text = this.add.text(x, y, label, {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '10px',
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '10px',
       color: '#ffffff', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5);
 
@@ -1028,16 +1117,166 @@ export class GameScene extends Phaser.Scene {
 
   // ===== 视觉 =====
   private spawnFloatText(x: number, y: number, text: string, color: number) {
-    // 性能优化：复用 text 对象，避免频繁创建销毁
-    // 简单方案：直接创建但用短 tween，text 数量上限由游戏自然频率控制
-    // 大量浮动文字时跳过，避免堆积（每帧最多累积一定数量）
     const t = this.add.text(x, y, text, {
-      fontFamily: '"Alimama FangYuanTi VF Thin", sans-serif', fontSize: '12px',
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '12px',
       color: '#' + color.toString(16).padStart(6, '0'), stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(10);
     this.tweens.add({
       targets: t, y: y - 40, alpha: 0, duration: 600,
       onComplete: () => t.destroy(),
     });
+  }
+
+  // ===== 场景内 Boss 战 =====
+  /** 启动场景内 Boss 战 */
+  private startSceneBoss(id: BossId) {
+    const info = BOSS_INFO[id];
+    if (!info) return;
+    this.bossActive = true;
+    this.bossId = id;
+    // HP = 章节目标金币（与 targetGold 同量级，玩家需积累足量数值的弹珠才能击败）
+    this.bossMaxHp = GameState.chapter.targetGold;
+    this.bossHp = this.bossMaxHp;
+
+    // boss 球纹理：按 boss 选色
+    const bossTexMap: Record<BossId, string> = {
+      boss_frost: 'ball_blue', boss_skull: 'ball_gray', boss_ghost: 'ball_purple',
+      boss_chameleon: 'ball_green', boss_entropy: 'ball_purple',
+    };
+    this.bossBallTexture = bossTexMap[id];
+
+    const cx = this.gridX + (BALANCE.gridCols * BALANCE.cellSize) / 2;
+    const by = this.settleY + 30;
+
+    // Boss 头像（底部中央，参与视觉，不参与物理）
+    this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(72, 72).setDepth(6).setAlpha(0.95);
+    // Boss 名字
+    this.bossNameText = this.add.text(cx, by - 52, info.name, {
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '14px',
+      color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(7);
+    // HP 条
+    this.bossHpBarBg = this.add.rectangle(cx, by - 36, 200, 10, 0x000000, 0.5)
+      .setStrokeStyle(1, 0xffffff, 0.3).setDepth(7);
+    this.bossHpBarFill = this.add.rectangle(cx - 100, by - 36, 200, 10, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
+    this.bossHpText = this.add.text(cx, by - 24, '', {
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '10px',
+      color: '#ffcc66', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(8);
+    this.updateBossHpDisplay();
+
+    // 定时生成 boss 球：章节越高频率越快
+    const interval = id === 'boss_frost' ? 4500 : id === 'boss_entropy' ? 2200 : 3000;
+    this.bossBallTimer = this.time.addEvent({ delay: interval, loop: true, callback: this.spawnBossBall, callbackScope: this });
+    // 立即先投一个
+    this.spawnBossBall();
+
+    this.hud.showToast(`${info.name} 现身！拦截它的弹珠，别让它们冲到顶部！`, 'prestige');
+  }
+
+  /** 生成一个 boss 球：从底部向上飞，value 很大 */
+  private spawnBossBall() {
+    if (!this.bossActive) return;
+    // boss 球 value = 章节目标 × 3%（到顶扣 3% 目标值金币）。用 bigint 域
+    const target = this.bossMaxHp;
+    const val = target / 30n || 1n;
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const cx = this.gridX + gridW / 2;
+    const spawnX = cx + Phaser.Math.Between(-gridW / 3, gridW / 3);
+    const spawnY = this.settleY + 20;
+
+    const sprite = this.matter.add.image(spawnX, spawnY, this.bossBallTexture, undefined, {
+      shape: { type: 'circle', radius: BALL_RADIUS },
+      restitution: 0.5, friction: 0.01, frictionAir: 0.001, density: 0.004,
+      label: 'ball',
+    });
+    sprite.setDisplaySize(BALL_RADIUS * 2, BALL_RADIUS * 2);
+    sprite.setIgnoreGravity(true);              // 不受重力，匀速上升
+    sprite.setVelocity(Phaser.Math.Between(-1, 1), -3.2);  // 向上飞
+    if (sprite.body) this.ballLabels.add(sprite.body as MatterJS.Body);
+
+    const text = this.add.text(spawnX, spawnY - 14, formatNum(val), {
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '11px',
+      color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(5);
+
+    const ball: Ball = {
+      sprite, text, value: val, source: 'boss', golden: false, sageCopy: 0n,
+      marble: null, poisonedPegs: undefined, thunderCharges: 0,
+      bossSpawnTime: Date.now(),
+    };
+    this.balls.push(ball);
+    this.ballBySprite.set(sprite, ball);
+  }
+
+  /** 更新 Boss HP 条显示 */
+  private updateBossHpDisplay() {
+    if (!this.bossHpBarFill || !this.bossHpText || this.bossMaxHp <= 0n) return;
+    const ratio = Number(Number(this.bossHp * 10000n / this.bossMaxHp) / 10000);
+    const w = Math.max(0, Math.min(1, ratio)) * 200;
+    this.bossHpBarFill.width = w;
+    this.bossHpText.setText(`${formatNum(this.bossHp)} / ${formatNum(this.bossMaxHp)}`);
+  }
+
+  /** 玩家弹珠落底时攻击 boss：伤害 = ball.value（含中间槽加成） */
+  private attackBossWithBall(ball: Ball) {
+    if (!this.bossActive) return;
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const slotW = gridW / BALANCE.bottomSlots;
+    const slotIdx = Math.min(BALANCE.bottomSlots - 1, Math.max(0, Math.floor((ball.sprite.x - this.gridX) / slotW)));
+    const isCenter = slotIdx === Math.floor(BALANCE.bottomSlots / 2);
+    const multiplier = isCenter ? 2 : 1;
+    let dmg = bigMulNum(ball.value, multiplier);
+    if (ball.sageCopy > 0n) dmg = dmg + bigMulNum(ball.sageCopy, multiplier);
+    if (dmg <= 0n) return;
+    this.bossHp = this.bossHp > dmg ? this.bossHp - dmg : 0n;
+    this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `-${formatNum(dmg)}`, 0xff6b6b);
+    this.updateBossHpDisplay();
+    if (this.bossHp <= 0n) this.winSceneBoss();
+  }
+
+  /** boss 球到达顶部：扣除等量金币，金币为 0 则失败 */
+  private bossBallReachedTop(ball: Ball) {
+    const loss = ball.value;
+    GameState.spendGold(loss);
+    this.spawnFloatText(ball.sprite.x, 20, `-${formatNum(loss)} 金币`, 0xff4444);
+    if (GameState.gold <= 0n) {
+      // 金币耗尽 → boss 战失败（撤退，可重试）
+      this.failSceneBoss();
+    }
+  }
+
+  /** 胜利：击败 boss */
+  private winSceneBoss() {
+    if (!this.bossActive) return;
+    const name = this.bossId ? BOSS_INFO[this.bossId].name : 'Boss';
+    this.hud.showToast(`击败 ${name}！归零之路已开`, 'prestige');
+    GameState.markBossDefeated();   // 会 emit BOSS_DEFEATED，触发既有的存档/重检逻辑
+    this.cleanupSceneBoss();
+  }
+
+  /** 失败：金币耗尽，boss 撤退，可重试 */
+  private failSceneBoss() {
+    if (!this.bossActive) return;
+    this.hud.showToast('金币耗尽！Boss 暂时撤退，积累金币后再次挑战', 'prestige');
+    this.cleanupSceneBoss();
+  }
+
+  /** 清理 boss 战状态与 UI */
+  private cleanupSceneBoss() {
+    this.bossActive = false;
+    this.bossId = null;
+    this.bossHp = 0n;
+    this.bossMaxHp = 0n;
+    if (this.bossBallTimer) { this.bossBallTimer.remove(); this.bossBallTimer = null; }
+    // 清除所有 boss 球
+    for (let i = this.balls.length - 1; i >= 0; i--) {
+      if (this.balls[i].source === 'boss') this.destroyBall(i);
+    }
+    this.bossSprite?.destroy(); this.bossSprite = null;
+    this.bossNameText?.destroy(); this.bossNameText = null;
+    this.bossHpBarBg?.destroy(); this.bossHpBarBg = null;
+    this.bossHpBarFill?.destroy(); this.bossHpBarFill = null;
+    this.bossHpText?.destroy(); this.bossHpText = null;
   }
 }

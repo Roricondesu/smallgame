@@ -87,7 +87,7 @@ export class HUD {
       this.handlePrestigeClick();
     });
     document.getElementById('btn-boss')!.addEventListener('click', () => {
-      // 手动触发 Boss 战（事件由 BossBattleSystem 监听后开启）
+      // 手动触发 Boss 战（事件由 GameScene 监听后开启场景内战斗）
       const id = GameState.currentBossId;
       if (id && !GameState.isBossDefeated()) {
         bus.emit(EVT.BOSS_TRIGGER, id);
