@@ -161,20 +161,36 @@ export class HUD {
     });
     document.getElementById('prestige-confirm')!.addEventListener('click', () => {
       document.getElementById('modal-prestige')!.classList.remove('open');
+      // 归零修复：先执行状态重置，再延迟 2 帧切换场景
+      // 第 1 帧让 modal 关闭 + HUD/DOM 清理，第 2 帧再启动新场景，避免旧实例残留导致卡死
       GameState.prestige(GameState.chapterId + 1);
-      // 归零后直接进入下一章游戏，不再播放剧情
-      // 延迟到下一帧执行场景切换：让 modal 关闭动画与 DOM 清理先完成，避免画面卡死
+      // 先清理当前 HUD（停止定时器、取消 RAF），避免重启后残留
+      this.stopRateTracking();
+      if (this.taskHintRaf !== null) {
+        cancelAnimationFrame(this.taskHintRaf);
+        this.taskHintRaf = null;
+      }
       requestAnimationFrame(() => {
-        this.scene.scene.start('Game');
+        // 再等一帧确保 shutdown 事件完成
+        requestAnimationFrame(() => {
+          this.scene.scene.start('Game');
+        });
       });
     });
 
     document.getElementById('menu-home')!.addEventListener('click', () => {
       document.getElementById('modal-menu')!.classList.remove('open');
       GameState.saveGame();
-      // 同样延迟场景切换，避免卡死
+      // 同样延迟 2 帧切换场景
+      this.stopRateTracking();
+      if (this.taskHintRaf !== null) {
+        cancelAnimationFrame(this.taskHintRaf);
+        this.taskHintRaf = null;
+      }
       requestAnimationFrame(() => {
-        this.scene.scene.start('Menu');
+        requestAnimationFrame(() => {
+          this.scene.scene.start('Menu');
+        });
       });
     });
     document.getElementById('menu-save')!.addEventListener('click', () => {

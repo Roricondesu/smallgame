@@ -185,6 +185,7 @@ export class MenuScene extends Phaser.Scene {
         if (act === 'start') this.handleStart();
         else if (act === 'slots') this.showSlotPicker();
         else if (act === 'shop') this.showCrystalShop();
+        else if (act === 'codex') this.showCodex();
         else if (act === 'settings') this.showSettings();
         else if (act === 'about') this.showAbout();
       });
@@ -613,6 +614,109 @@ export class MenuScene extends Phaser.Scene {
     toast.textContent = msg;
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+  // ===== 图鉴 =====
+  private showCodex() {
+    let overlay = document.getElementById('menu-codex-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'menu-codex-overlay';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" style="width:min(920px,96vw);max-height:88vh;overflow-y:auto;">
+          <h3 style="display:flex;align-items:center;gap:8px;">${svgIcon('info', 18)} 角色图鉴</h3>
+          <p class="muted" style="margin-bottom:14px;">游戏中登场的所有角色、立绘与简介</p>
+          <div id="codex-list" class="codex-list"></div>
+          <div class="modal-actions"><button id="menu-codex-close" class="btn">关闭</button></div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const ov = overlay;
+      document.getElementById('menu-codex-close')!.addEventListener('click', () => ov.classList.remove('open'));
+      ov.addEventListener('click', (e) => {
+        if (e.target === ov) ov.classList.remove('open');
+      });
+      this.renderCodexList();
+    }
+    overlay.classList.add('open');
+  }
+
+  private renderCodexList() {
+    const list = document.getElementById('codex-list');
+    if (!list) return;
+    const characters: Array<{ key: string; name: string; title: string; portrait: string; desc: string; join: string }> = [
+      {
+        key: 'linn',
+        name: '林恩',
+        title: '失落贤者之徒 · 主角',
+        portrait: '/portraits/linn.png',
+        desc: '被暴雪掩埋在贤者遗迹外的少年，由零号刨出后苏醒。记忆丢失大半，但身上似乎隐藏着贤者的核心。勇敢、善良、好奇心强，随着旅程推进逐渐成长为真正的炼金术士。',
+        join: '第 1 章 · 零号镇',
+      },
+      {
+        key: 'zero',
+        name: '零号',
+        title: '贤者机器的残片 · 神秘机器导师',
+        portrait: '/portraits/zero.png',
+        desc: '贤者遗迹里仅存的"会动的机器"。冷静、理性、暗藏秘密，实则是被拆分的贤者意识之一。引导林恩学习运算，一直在等待三份核心合一的那一天。其真实身份是贤者机器的运算核心载体。',
+        join: '第 1 章 · 零号镇',
+      },
+      {
+        key: 'lily',
+        name: '莉莉',
+        title: '能看见"数值"的神秘少女',
+        portrait: '/portraits/lily.png',
+        desc: '被封印在贤者遗迹水晶棺中的小女孩，能直接看见所有人身上的"数值"。天真、活泼、偶尔敏锐。其体内封存着贤者的第二份意识核心。被林恩救出后成为同行伙伴，能洞察 Boss 的弱点。',
+        join: '第 2 章 · 贤者遗迹（水晶棺救援）',
+      },
+      {
+        key: 'vera',
+        name: '薇拉',
+        title: '金辉城首席炼金术师 · 御姐',
+        portrait: '/portraits/vera.png',
+        desc: '金辉城精英炼金术师，零号的老朋友。优雅、骄傲、外冷内热。为守护城市而战，其母亲曾是贤者机器的研究者之一。在第 3 章加入队伍，最终也选择跟随林恩走向圣殿。',
+        join: '第 3 章 · 金辉城（炼金术师协会）',
+      },
+      {
+        key: 'boss_skull',
+        name: '骷髅守卫',
+        title: '第 2 章 Boss · 贤者遗迹守护者',
+        portrait: '/portraits/boss_skull.png',
+        desc: '贤者用来看守核心区域的构装体守护者，感应到封印被解除后苏醒。会召唤骨盾抵挡攻击，需要先击破护盾才能伤到本体。会阻止任何试图带走遗迹秘密的人。',
+        join: '第 2 章 · 贤者遗迹深处',
+      },
+      {
+        key: 'boss_ghost',
+        name: '熵之幻影',
+        title: '第 3 章 Boss · 熵增的具象化',
+        portrait: '/portraits/boss_ghost.png',
+        desc: '非实体存在，是金辉城熵增加速的具象化。能周期性虚化躲避攻击，只在显形时暴露弱点。扬言一切运算终将归零，被林恩等人击碎核心后暂时遏制了熵的增长。',
+        join: '第 3 章 · 金辉城',
+      },
+      {
+        key: 'boss_chameleon',
+        name: '幻彩守卫',
+        title: '第 4 章 Boss · 零之圣殿最终防线',
+        portrait: '/portraits/boss_chameleon.png',
+        desc: '零之圣殿的最终防线，能模仿弹珠的运算——乘法会被它乘回来，指数会被反弹。弱点会变色切换，需要在对应颜色时使用对应元素弹珠才能造成有效伤害。莉莉的"数值视觉"能解析它的模式。',
+        join: '第 4 章 · 零之圣殿',
+      },
+    ];
+
+    list.innerHTML = characters.map(c => `
+      <div class="codex-card">
+        <div class="codex-portrait">
+          <img src="${c.portrait}" alt="${c.name}" onerror="this.style.opacity=0.2;this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22%3E%3Crect width=%22128%22 height=%22128%22 fill=%22%23222%22/%3E%3C/svg%3E'"/>
+        </div>
+        <div class="codex-info">
+          <div class="codex-name">${c.name}</div>
+          <div class="codex-title">${c.title}</div>
+          <div class="codex-join">${svgIcon('chapter', 12)} ${c.join}</div>
+          <div class="codex-desc">${c.desc}</div>
+        </div>
+      </div>
+    `).join('');
   }
 
   // ===== 关于 =====
