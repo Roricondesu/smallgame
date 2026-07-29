@@ -111,6 +111,7 @@ export class GameScene extends Phaser.Scene {
   private gridBg!: Phaser.GameObjects.Graphics;
   private gridBgRect!: Phaser.GameObjects.Rectangle;
   private bgImage!: Phaser.GameObjects.Image;   // 章节背景图
+  private bgGradient!: Phaser.GameObjects.Graphics; // 上下渐变遮罩
   private wallVisuals: Phaser.GameObjects.Rectangle[] = [];
   private wallBodies: MatterJS.Body[] = [];
   private readonly wallW = 8;
@@ -151,8 +152,17 @@ export class GameScene extends Phaser.Scene {
     // 先计算布局参数（gridX/gridY/settleY），再创建元素，最后 applyLayout 统一定位
     this.computeLayout();
 
-    // 章节背景图（最底层）+ 六边形点阵覆盖层
+    // 章节背景图（最底层）+ 30% 变暗 tint（0xB2 = 70% 亮度）
     this.bgImage = this.add.image(DESIGN_W / 2, DESIGN_H / 2, `bg_ch${GameState.chapterId}`).setDepth(-100);
+    this.bgImage.setTint(0xb2b2b2);
+
+    // 上下渐变透明遮罩：顶部/底部融入场景背景色（#050709），中间透明
+    this.bgGradient = this.add.graphics().setDepth(-99);
+    this.bgGradient.fillGradientStyle(0x050709, 0x050709, 0x050709, 0x050709, 1, 1, 0, 0);
+    this.bgGradient.fillRect(0, 0, DESIGN_W, DESIGN_H * 0.35);
+    this.bgGradient.fillGradientStyle(0x050709, 0x050709, 0x050709, 0x050709, 0, 0, 1, 1);
+    this.bgGradient.fillRect(0, DESIGN_H * 0.65, DESIGN_W, DESIGN_H * 0.35);
+
     this.gridBg = this.add.graphics();
     this.gridBgRect = this.add.rectangle(0, 0, 0, 0, 0x000000, 0.2).setStrokeStyle(1, 0x30363d).setDepth(-1);
 
@@ -322,8 +332,9 @@ export class GameScene extends Phaser.Scene {
       }
     });
     bus.on(EVT.CHAPTER_CHANGED, () => {
-      // 切换章节背景
+      // 切换章节背景（重新应用 30% 变暗 tint 以防被清除）
       this.bgImage.setTexture(`bg_ch${GameState.chapterId}`);
+      this.bgImage.setTint(0xb2b2b2);
     });
 
     // 定时器
