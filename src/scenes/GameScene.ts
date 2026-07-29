@@ -1174,26 +1174,44 @@ export class GameScene extends Phaser.Scene {
     this.hud.showToast(`${info.name} 现身！拦截它的弹珠，别让它们冲到顶部！`, 'prestige');
   }
 
-  /** 生成一个 boss 球：从底部向上飞，value 很大 */
+  /** 按 boss 强度返回弹珠参数：越靠后章节，球越大、越快、数值越高、向上加速越强 */
+  private bossBallConfig(): { valDivisor: bigint; speed: number; gravityScale: number; radius: number } {
+    const ch = GameState.chapterId;
+    switch (ch) {
+      case 1:  return { valDivisor: 40n, speed: 2.6, gravityScale: -0.4, radius: 8 };
+      case 2:  return { valDivisor: 30n, speed: 3.0, gravityScale: -0.5, radius: 9 };
+      case 3:  return { valDivisor: 25n, speed: 3.4, gravityScale: -0.6, radius: 9 };
+      case 4:  return { valDivisor: 20n, speed: 3.8, gravityScale: -0.7, radius: 10 };
+      case 5:  return { valDivisor: 15n, speed: 4.2, gravityScale: -0.8, radius: 11 };
+      default: return { valDivisor: 30n, speed: 3.0, gravityScale: -0.5, radius: 9 };
+    }
+  }
+
+  /** 生成一个 boss 球：从底部向上飞，受负重力（向上加速），value 随章节递增 */
   private spawnBossBall() {
     if (!this.bossActive) return;
-    // boss 球 value = 章节目标 × 3%（到顶扣 3% 目标值金币）。用 bigint 域
-    const target = this.bossMaxHp;
-    const val = target / 30n || 1n;
+    const cfg = this.bossBallConfig();
+    // boss 球 value = 章节目标 / valDivisor（章节越高比例越大）
+    const val = this.bossMaxHp / cfg.valDivisor || 1n;
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const cx = this.gridX + gridW / 2;
     const spawnX = cx + Phaser.Math.Between(-gridW / 3, gridW / 3);
     const spawnY = this.settleY + 20;
 
     const sprite = this.matter.add.image(spawnX, spawnY, this.bossBallTexture, undefined, {
-      shape: { type: 'circle', radius: BALL_RADIUS },
+      shape: { type: 'circle', radius: cfg.radius },
       restitution: 0.5, friction: 0.01, frictionAir: 0.001, density: 0.004,
       label: 'ball',
     });
-    sprite.setDisplaySize(BALL_RADIUS * 2, BALL_RADIUS * 2);
-    sprite.setIgnoreGravity(true);              // 不受重力，匀速上升
-    sprite.setVelocity(Phaser.Math.Between(-1, 1), -3.2);  // 向上飞
-    if (sprite.body) this.ballLabels.add(sprite.body as MatterJS.Body);
+    sprite.setDisplaySize(cfg.radius * 2, cfg.radius * 2);
+    // 负重力：球持续向上加速，越强 boss 加速越快，越难拦截
+    const body = sprite.body as MatterJS.Body | null;
+    if (body) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (body as any).gravityScale = cfg.gravityScale;
+      this.ballLabels.add(body);
+    }
+    sprite.setVelocity(Phaser.Math.Between(-1, 1), -cfg.speed);
 
     const text = this.add.text(spawnX, spawnY - 14, formatNum(val), {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '11px',
