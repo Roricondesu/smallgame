@@ -233,7 +233,7 @@ export class HUD {
     });
   }
 
-  /** 左侧任务提示：根据 storyProgress / 教程状态 / 章节进度生成提示文字 */
+  /** 左上角任务提示：根据 storyProgress / 教程状态 / 章节进度生成提示文字 */
   updateTaskHint() {
     const el = document.getElementById('task-hint');
     if (!el) return;
@@ -241,9 +241,11 @@ export class HUD {
     const ch = GameState.chapterId;
     const tutorial = (this.scene as unknown as TaskHintScene).tutorialState ?? 'done';
 
-    // 章节进度百分比
+    // 章节目标与当前累计
     const target = GameState.chapter.targetGold;
     const total = GameState.save.totalGold;
+    const targetStr = formatNum(target);
+    const totalStr = formatNum(total);
     let pct = 0;
     if (target > 0n) {
       if (total >= target) pct = 100;
@@ -268,6 +270,7 @@ export class HUD {
     // 按 storyProgress 后缀分派提示
     let title = `第 ${ch} 章 · ${GameState.chapter.name}`;
     let body = '继续积累金币推进剧情';
+    let goalText = `目标 ${totalStr} / ${targetStr} 金币`;
 
     if (prog.endsWith('_intro')) {
       body = '章节开场，按对话引导探索';
@@ -277,11 +280,13 @@ export class HUD {
       body = '贤者档案库揭示了真相，继续推进';
     } else if (prog.endsWith('_boss')) {
       body = 'Boss 已现身！点击右上【Boss战】按钮挑战';
+      goalText = `Boss 出现 · 累计 ${totalStr} / ${targetStr}`;
     } else if (prog.endsWith('_ready')) {
       body = '点击右上【归零】进入下一周目';
+      goalText = `已达成目标 ${totalStr} / ${targetStr}`;
     }
 
-    el.innerHTML = `<span class="task-title">${title}</span><span class="task-body">${body}</span><span class="task-prog">进度 ${pct.toFixed(0)}%</span>`;
+    el.innerHTML = `<span class="task-title">${title}</span><span class="task-body">${body}</span><span class="task-goal">${goalText}</span><span class="task-prog">进度 ${pct.toFixed(0)}%</span>`;
     el.classList.add('show');
   }
 

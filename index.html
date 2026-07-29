@@ -558,43 +558,52 @@
     .settings-action.danger:hover { background: rgba(255,107,107,0.1); border-color: var(--bad); }
     .settings-hint { margin-top: 8px; }
 
-    /* ===== 左侧任务提示（无边框悬浮） ===== */
+    /* ===== 左上角任务提示（无边框悬浮） ===== */
     .task-hint {
       position: fixed;
-      left: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      max-width: 200px;
-      padding: 8px 10px;
-      color: rgba(255, 255, 255, 0.78);
+      left: 12px;
+      top: calc(env(safe-area-inset-top, 0px) + 64px);
+      max-width: 220px;
+      padding: 6px 8px;
+      color: rgba(255, 255, 255, 0.82);
       font-size: 12px;
-      line-height: 1.55;
+      line-height: 1.5;
       letter-spacing: 0.2px;
       pointer-events: none;
-      z-index: 60;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 1px rgba(0, 0, 0, 0.9);
+      z-index: 55;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 1px rgba(0, 0, 0, 0.95);
       opacity: 0;
       transition: opacity 0.3s ease;
       border: none;
       background: transparent;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 3px;
     }
     .task-hint.show { opacity: 1; }
     .task-hint .task-title {
       color: var(--gold);
       font-size: 11px;
       font-weight: 600;
-      opacity: 0.85;
+      opacity: 0.9;
       letter-spacing: 0.4px;
     }
-    .task-hint .task-body { color: rgba(255,255,255,0.78); }
+    .task-hint .task-body { color: rgba(255,255,255,0.82); }
     .task-hint .task-prog {
       display: inline-block;
       margin-top: 2px;
       font-size: 10px;
       color: var(--muted);
+    }
+    .task-hint .task-goal {
+      display: inline-block;
+      margin-top: 2px;
+      font-size: 11px;
+      color: var(--gold);
+      opacity: 0.85;
+    }
+    @media (max-width: 640px) {
+      .task-hint { top: calc(env(safe-area-inset-top, 0px) + 58px); max-width: 46vw; font-size: 11px; }
     }
 
     /* ===== 提示条 ===== */
@@ -780,13 +789,22 @@
     }
     /* 手机竖屏：全面优化 */
     @media (max-width: 640px) {
-      /* 顶部状态栏：强制单行，避免换行遮挡游戏 */
+      /* 顶部状态栏：允许换行，避免按钮被裁切够不到 */
       #top-bar {
         gap: 5px;
         top: max(8px, env(safe-area-inset-top));
         left: 8px; right: 8px;
-        flex-wrap: nowrap;
-        overflow: hidden;
+        flex-wrap: wrap;
+        overflow: visible;
+        padding-right: 44px;
+      }
+      /* 菜单按钮在移动端单独 fixed 到右上角，永远可达 */
+      #btn-menu {
+        position: fixed;
+        top: max(8px, env(safe-area-inset-top));
+        right: 8px;
+        z-index: 70;
+        flex-shrink: 0;
       }
       .stat-chip {
         padding: 5px 8px;
