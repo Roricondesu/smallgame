@@ -11,8 +11,9 @@ from collections import deque
 from PIL import Image
 import numpy as np
 
-THRESH = 48      # 颜色距离阈值：小于此值视为背景
-FEATHER = 28     # 羽化范围：阈值+feather 内的像素部分透明
+THRESH = 26      # 颜色距离阈值：小于此值视为背景
+FEATHER = 14     # 羽化范围：阈值+feather 内的像素部分透明
+GLOBAL_MARGIN = 30  # 全局背景距离安全余度：像素距全局背景超过 THRESH+FEATHER+此值 则绝非背景
 
 def color_dist(a, b):
     """RGB 欧氏距离"""
@@ -63,6 +64,11 @@ def cutout(path):
         d = np.sqrt(np.sum((rgb[y, x].astype(float) - ref) ** 2))
         if d > THRESH + FEATHER:
             continue  # 不是背景，停止蔓延
+        # 全局背景距离安全检查：距全局背景过远的像素绝非背景，
+        # 防止 flood fill 经渐变路径游走进角色内部（解决"抠过头"）
+        dg = np.sqrt(np.sum((rgb[y, x].astype(float) - bg_ref) ** 2))
+        if dg > THRESH + FEATHER + GLOBAL_MARGIN:
+            continue
         # 在阈值内 → 完全透明；在羽化范围 → 部分透明
         if d <= THRESH:
             alpha[y, x] = 0
