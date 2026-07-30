@@ -541,8 +541,8 @@ class GameStateClass {
   /** 当前章节对应的 Boss ID（每章都有 Boss） */
   get currentBossId(): 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy' | null {
     switch (this.chapterId) {
-      case 1: return 'boss_skull';
-      case 2: return 'boss_frost';
+      case 1: return 'boss_frost';
+      case 2: return 'boss_skull';
       case 3: return 'boss_ghost';
       case 4: return 'boss_chameleon';
       case 5: return 'boss_entropy';

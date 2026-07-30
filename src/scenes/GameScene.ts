@@ -1363,11 +1363,7 @@ export class GameScene extends Phaser.Scene {
       },
     });
 
-    // Boss 名字 + HP 数值文字（弧形血环在圆环外侧绘制，无需独立矩形条）
-    this.bossNameText = this.add.text(cx, by - 84, info.name, {
-      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '15px',
-      color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(7);
+    // HP 数值文字（弧形血环在圆环外侧绘制，无名字标签）
     // 弧形血环 Graphics（融合于圆环外侧）
     this.bossHpArc = this.add.graphics().setDepth(8);
     this.bossHpText = this.add.text(cx, by + 64, '', {
@@ -1376,9 +1372,9 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(8);
     this.updateBossHpDisplay();
 
-    // 名字/血量文字跟随 boss 移动（血环 Graphics 在 onUpdate 中整体重绘定位）
+    // 血量文字跟随 boss 移动（血环 Graphics 在 onUpdate 中整体重绘定位）
     this.tweens.add({
-      targets: [this.bossNameText, this.bossHpText],
+      targets: [this.bossHpText],
       x: { from: cx - moveRange, to: cx + moveRange },
       duration: moveDur, yoyo: true, repeat: -1, ease: 'Sine.inOut',
     });
