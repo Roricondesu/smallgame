@@ -596,6 +596,13 @@ class GameStateClass {
     bus.emit(EVT.BOSS_DEFEATED, id);
   }
 
+  /** Boss 战失败时重置进度：仅无尽模式需要（章节模式失败可由 90% 检测重新进入） */
+  resetBossProgressOnFail() {
+    if (this._save.endlessMode && this._save.storyProgress === 'endless_boss') {
+      this._save.storyProgress = 'endless'; // 退回 'endless'，允许再次积累金币后触发
+    }
+  }
+
   // ===== 无尽模式 Boss 阈值系统 =====
   /** 无尽模式当前 tier（已击败的 boss 数量） */
   get endlessBossTier(): number {
@@ -603,15 +610,15 @@ class GameStateClass {
   }
 
   /** 无尽模式第 tier 个 boss 的阈值（缩放值）
-   *  原值序列：10B, 100B, 1C, 10C, 100C, 1D, 10D, ...（每个 ×10）
-   *  原值 = 1e7 × 10^tier，缩放 ×100 → 1e9 × 10^tier */
+   *  渐进式增长：前 5 tier 每 tier ×3（原值 10B→30B→90B→270B→810B→2.43C），
+   *  之后每 tier ×2，避免 ×10 跨度过大导致卡死。
+   *  tier 0 起点为 1e9 缩放值（原值 10B） */
   endlessBossThreshold(tier: number): bigint {
     if (tier < 0) return 0n;
     // 1e9 缩放值（对应原值 1e7 = 10B）
     let result = 1000000000n;
     for (let i = 0; i < tier; i++) {
-      result *= 10n;
-      // 防止极端增长卡死（tier 很大时 BigInt 仍可处理，但避免无意义大数）
+      result *= (i < 5) ? 3n : 2n;
     }
     return result;
   }

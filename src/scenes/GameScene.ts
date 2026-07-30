@@ -4,6 +4,7 @@
 
 import Phaser from 'phaser';
 import { GameState, formatNum, bigMulNum } from '../systems/GameState';
+import { bigLog10Abs } from '../systems/BigNum';
 import { PEG_MAP } from '../data/pegs';
 
 import { DIALOGUE_MAP, chapterIntroId, chapterMidpointId, chapterPrestigeReadyId } from '../data/dialogues';
@@ -14,6 +15,7 @@ import { bus, EVT } from '../systems/EventBus';
 import { HUD } from '../ui/HUD';
 import type { PegSave, MarbleConfig } from '../types';
 import { BALANCE } from '../types';
+import { getChapterLayoutKeys } from '../data/pegLayouts';
 
 // Matter 弹珠对象
 interface Ball {
@@ -107,6 +109,8 @@ export class GameScene extends Phaser.Scene {
   /** boss 发光描边环 */
   private bossGlowRing: Phaser.GameObjects.Arc | null = null;
   private placementMode: { typeId: string | null } = { typeId: null };
+  /** 当前章节允许放钉的网格位置集合（来自 pegLayouts） */
+  private layoutKeys: Set<string> = new Set();
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
   private comboDisplay!: Phaser.GameObjects.Text;
@@ -227,14 +231,18 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(1, 0).setAlpha(0);
     this.frenzyOverlay = this.add.rectangle(0, 0, DESIGN_W, DESIGN_H, 0xf0b429, 0).setOrigin(0).setDepth(99);
 
-    // 加载钉子（真实）
+    // 加载当前章节的占位钉子布局（玩家只能在预设位置放钉）
+    this.layoutKeys = getChapterLayoutKeys(GameState.chapterId);
+
+    // 加载钉子（真实）：仅渲染落在当前章节布局内的存档钉子，超出布局的视为过期丢弃
     const occupied = new Set<string>();
     for (const peg of GameState.pegs) {
+      if (!this.layoutKeys.has(this.placeholderKey(peg.x, peg.y))) continue;
       this.renderPeg(peg);
       occupied.add(this.placeholderKey(peg.x, peg.y));
     }
 
-    // 初始化占位钉子（显示 0，可被替换）
+    // 初始化占位钉子（显示 0，可被替换）：仅在当前章节布局位置渲染
     this.initPlaceholders(occupied);
 
     // Matter 碰撞事件：使用 collisionStart
@@ -252,6 +260,11 @@ export class GameScene extends Phaser.Scene {
       if (this.placementMode.typeId) {
         const grid = this.pixelToGrid(wx, wy);
         if (grid) {
+          // 仅允许在当前章节布局预设的位置放钉
+          if (!this.layoutKeys.has(this.placeholderKey(grid.gx, grid.gy))) {
+            this.hud.showToast('该位置不可放置钉子', 'prestige');
+            return;
+          }
           const peg = GameState.placePeg(this.placementMode.typeId, grid.gx, grid.gy);
           if (peg) {
             this.removePlaceholder(grid.gx, grid.gy);
@@ -1164,15 +1177,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ===== 占位钉子（显示 0，可被替换，小碰撞体） =====
-  // 性能权衡：占位钉子仍需碰撞反弹，但缩小半径减少碰撞计算量
+  // 仅在当前章节布局预设的位置渲染，玩家不可在布局外放钉
   private initPlaceholders(occupied: Set<string>) {
-    for (let gy = 0; gy < BALANCE.gridRows; gy++) {
-      const maxCol = (gy % 2 === 1) ? BALANCE.gridCols - 1 : BALANCE.gridCols;
-      for (let gx = 0; gx < maxCol; gx++) {
-        const key = this.placeholderKey(gx, gy);
-        if (occupied.has(key)) continue;
-        this.renderPlaceholder(gx, gy);
-      }
+    for (const key of this.layoutKeys) {
+      if (occupied.has(key)) continue;
+      const [gx, gy] = key.split(',').map(Number);
+      this.renderPlaceholder(gx, gy);
     }
   }
 
@@ -1406,14 +1416,20 @@ export class GameScene extends Phaser.Scene {
     // 幻彩 boss：开局设定初始弱点
     if (id === 'boss_chameleon') this.setBossWeakness(this.randomWeakness());
 
-    // 定时生成 boss 球：章节越高频率越快
-    const interval = id === 'boss_frost' ? 3200 : id === 'boss_entropy' ? 1500 : 2200;
+    // 定时生成 boss 球：章节越高频率越快；无尽模式按 tier 进一步加快（封顶 1200ms）
+    let interval = id === 'boss_frost' ? 3200 : id === 'boss_entropy' ? 1500 : 2200;
+    if (GameState.endlessMode) {
+      interval = Math.max(1200, interval - GameState.endlessBossTier * 80);
+    }
     this.bossBallTimer = this.time.addEvent({ delay: interval, loop: true, callback: this.spawnBossBall, callbackScope: this });
     // 立即先投一个
     this.spawnBossBall();
 
-    // 技能定时器：每隔一段时间释放专属技能（章节越高越频繁）
-    const skillInterval = id === 'boss_entropy' ? 8000 : id === 'boss_chameleon' ? 10000 : 12000;
+    // 技能定时器：每隔一段时间释放专属技能（章节越高越频繁；无尽模式按 tier 加快）
+    let skillInterval = id === 'boss_entropy' ? 8000 : id === 'boss_chameleon' ? 10000 : 12000;
+    if (GameState.endlessMode) {
+      skillInterval = Math.max(5000, skillInterval - GameState.endlessBossTier * 150);
+    }
     this.bossSkillTimer = this.time.addEvent({ delay: skillInterval, loop: true, callback: this.bossSkill, callbackScope: this });
 
     this.hud.showToast(`${info.name} 现身！技能：${info.skillName}（${info.skillDesc}）`, 'prestige');
@@ -1521,17 +1537,42 @@ export class GameScene extends Phaser.Scene {
     return el ? (map[el] || el) : '无';
   }
 
-  /** 按 boss 强度返回弹珠参数：越靠后章节，球越大、越快、数值越高、向上加速越强（大幅强化） */
-  private bossBallConfig(): { valDivisor: bigint; speed: number; force: number; radius: number } {
+  /** 按 boss 强度返回弹珠参数：越靠后章节/tier，球越快、数值越高、向上加速越强。
+   *  radius 不再按章节固定，而由球的 value 对数动态缩放（封顶 14），避免大数值球卡屏。 */
+  private bossBallConfig(): { valDivisor: bigint; speed: number; force: number } {
+    // 无尽模式：按 tier 递增（每 tier 球更快、数值比例更大、加速更强）
+    if (GameState.endlessMode) {
+      const t = GameState.endlessBossTier;
+      // tier 0~4 用基础档，之后每 5 tier 提升一档，封顶在最高档附近
+      const tier = Math.min(t, 20);
+      const rawDiv = BigInt(12 - Math.floor(tier / 2));
+      const valDivisor = rawDiv > 4n ? rawDiv : 4n;
+      const speed = Math.min(7.5, 3.8 + tier * 0.18);
+      const force = Math.min(1.8, 0.8 + tier * 0.05);
+      return { valDivisor, speed, force };
+    }
     const ch = GameState.chapterId;
     switch (ch) {
-      case 1:  return { valDivisor: 12n, speed: 3.8, force: 0.8, radius: 11 };
-      case 2:  return { valDivisor: 9n,  speed: 4.2, force: 0.95, radius: 12 };
-      case 3:  return { valDivisor: 7n,  speed: 4.8, force: 1.1, radius: 13 };
-      case 4:  return { valDivisor: 5n,  speed: 5.4, force: 1.3, radius: 14 };
-      case 5:  return { valDivisor: 4n,  speed: 6.2, force: 1.5, radius: 15 };
-      default: return { valDivisor: 9n,  speed: 4.2, force: 0.95, radius: 12 };
+      case 1:  return { valDivisor: 12n, speed: 3.8, force: 0.8 };
+      case 2:  return { valDivisor: 9n,  speed: 4.2, force: 0.95 };
+      case 3:  return { valDivisor: 7n,  speed: 4.8, force: 1.1 };
+      case 4:  return { valDivisor: 5n,  speed: 5.4, force: 1.3 };
+      case 5:  return { valDivisor: 4n,  speed: 6.2, force: 1.5 };
+      default: return { valDivisor: 9n,  speed: 4.2, force: 0.95 };
     }
+  }
+
+  /** boss 球半径：按数值对数动态缩放，封顶 14（displaySize 28），避免大数值球卡屏 */
+  private bossBallRadius(value: bigint): number {
+    // value 缩放值 1e9 (原值 1e7) → log10 ≈ 9，对应半径约 11
+    // value 越大半径缓慢增长，封顶 14
+    const MIN_R = 10, MAX_R = 14;
+    if (value <= 0n) return MIN_R;
+    const log = bigLog10Abs(value);
+    if (!isFinite(log)) return MIN_R;
+    // log 9 → MIN_R，log 30 → MAX_R，线性插值后 clamp
+    const r = MIN_R + (log - 9) * (MAX_R - MIN_R) / 21;
+    return Math.max(MIN_R, Math.min(MAX_R, r));
   }
 
   /** 生成一个 boss 球：从底部向上飞，每帧施加向上力（负重力），value 随章节递增 */
@@ -1540,6 +1581,8 @@ export class GameScene extends Phaser.Scene {
     const cfg = this.bossBallConfig();
     // boss 球 value = 章节目标 / valDivisor（章节越高比例越大）
     const val = this.bossMaxHp / cfg.valDivisor || 1n;
+    // 半径按数值对数动态缩放，封顶 14，避免大数值球卡屏
+    const radius = this.bossBallRadius(val);
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const cx = this.gridX + gridW / 2;
     // 从 boss 本体两侧发射，避免与 boss sensor 本体重叠
@@ -1548,11 +1591,11 @@ export class GameScene extends Phaser.Scene {
     const spawnY = this.settleY + 70;
 
     const sprite = this.matter.add.image(spawnX, spawnY, this.bossBallTexture, undefined, {
-      shape: { type: 'circle', radius: cfg.radius },
+      shape: { type: 'circle', radius },
       restitution: 0.5, friction: 0.01, frictionAir: 0.001, density: 0.004,
       label: 'ball',
     });
-    sprite.setDisplaySize(cfg.radius * 2, cfg.radius * 2);
+    sprite.setDisplaySize(radius * 2, radius * 2);
     sprite.setIgnoreGravity(true);   // 关闭世界重力，由 update 每帧施加向上力
     sprite.setVelocity(Phaser.Math.Between(-1, 1), -cfg.speed);
     if (sprite.body) this.ballLabels.add(sprite.body as MatterJS.Body);
@@ -1635,7 +1678,11 @@ export class GameScene extends Phaser.Scene {
   private winSceneBoss() {
     if (!this.bossActive) return;
     const name = this.bossId ? BOSS_INFO[this.bossId].name : 'Boss';
-    this.hud.showToast(`击败 ${name}！归零之路已开`, 'prestige');
+    // 文案按模式区分：章节模式开启归零，无尽模式推进下一阶段
+    const toast = GameState.endlessMode
+      ? `击败 ${name}！进入下一阶段`
+      : `击败 ${name}！归零之路已开`;
+    this.hud.showToast(toast, 'prestige');
     GameState.markBossDefeated();   // 会 emit BOSS_DEFEATED，触发既有的存档/重检逻辑
     this.cleanupSceneBoss();
   }
@@ -1644,6 +1691,9 @@ export class GameScene extends Phaser.Scene {
   private failSceneBoss() {
     if (!this.bossActive) return;
     this.hud.showToast('金币耗尽！Boss 暂时撤退，积累金币后再次挑战', 'prestige');
+    // 无尽模式失败后需重置 storyProgress，否则卡在 'endless_boss' 导致无法再次触发
+    // 章节模式失败时 storyProgress 仍为 'chN_boss'，可由 90% 检测重新进入，无需重置
+    GameState.resetBossProgressOnFail();
     this.cleanupSceneBoss();
   }
 
