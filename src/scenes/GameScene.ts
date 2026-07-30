@@ -82,8 +82,6 @@ export class GameScene extends Phaser.Scene {
   private bossBallTexture!: string;
   /** boss 本体碰撞体（静态 sensor image），玩家球碰到才造成伤害 */
   private bossBodyImg: Phaser.Physics.Matter.Image | null = null;
-  /** boss 底座圆盘（立绘背景，确保暗背景下可见） */
-  private bossBase: Phaser.GameObjects.Arc | null = null;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -1228,20 +1226,17 @@ export class GameScene extends Phaser.Scene {
     const bossSize = 144;
     const by = this.settleY + 70;
 
-    // Boss 底座圆盘：确保立绘在暗背景下可见，并标示本体命中范围
-    this.bossBase = this.add.circle(cx, by, bossSize / 2 + 6, 0x1a0d0d, 0.85)
-      .setStrokeStyle(3, 0xff6b6b, 0.7).setDepth(5);
-
-    // Boss 头像（底部中央）+ 本体静态 sensor 碰撞体（玩家球碰到才造成伤害）
+    // Boss 头像（底部中央）
     this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(1);
-    // 本体 sensor：静态、不阻挡球，仅检测碰撞；半径略小于视觉以要求精准命中
-    const bossMatter = this.matter.add.image(cx, by, 'portrait_' + id, undefined, {
+    // 本体 sensor：静态、不阻挡球，仅检测碰撞；用 peg_placeholder 纹理避免与立绘冲突
+    const bossMatter = this.matter.add.image(cx, by, 'peg_placeholder', undefined, {
       isStatic: true,
       isSensor: true,
       shape: { type: 'circle', radius: 58 },
       label: 'boss_body',
     });
     bossMatter.setVisible(false);
+    bossMatter.setDisplaySize(1, 1);
     this.bossBodyImg = bossMatter;
 
     // Boss 名字 + HP 条（上移到本体上方，避免被本体遮挡；血条改细长）
@@ -1367,7 +1362,6 @@ export class GameScene extends Phaser.Scene {
     }
     this.bossSprite?.destroy(); this.bossSprite = null;
     this.bossBodyImg?.destroy(); this.bossBodyImg = null;
-    this.bossBase?.destroy(); this.bossBase = null;
     this.bossNameText?.destroy(); this.bossNameText = null;
     this.bossHpBarBg?.destroy(); this.bossHpBarBg = null;
     this.bossHpBarFill?.destroy(); this.bossHpBarFill = null;
