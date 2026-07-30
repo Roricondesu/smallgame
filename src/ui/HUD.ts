@@ -21,6 +21,8 @@ export class HUD {
   private root: HTMLElement;
   private shopTab: 'pegs' | 'autos' | 'skills' | 'global' | 'marbles' = 'pegs';
   private onPlacementSelect?: (typeId: string | null) => void;
+  /** DOM 事件是否已绑定（全局 DOM 元素，跨场景重启不销毁，需去重防止重复绑定） */
+  private domBound = false;
   private selectedPegType: string | null = null;
 
 
@@ -41,12 +43,16 @@ export class HUD {
   mount() {
     this.root.style.display = 'block';
     this.injectIcons();
-    this.bindHeader();
-    this.bindShopTabs();
-    this.bindPanelToggles();
-    this.renderShop();
-    this.bindModals();
+    // DOM 元素是全局的，跨场景重启不销毁，事件只绑一次防止重复触发
+    if (!this.domBound) {
+      this.domBound = true;
+      this.bindHeader();
+      this.bindShopTabs();
+      this.bindPanelToggles();
+      this.bindModals();
+    }
     this.bindEvents();
+    this.renderShop();
 
     this.updateHeader();
     this.startRateTracking();
@@ -62,6 +68,9 @@ export class HUD {
       cancelAnimationFrame(this.taskHintRaf);
       this.taskHintRaf = null;
     }
+    // 解绑所有 bus 监听，防止场景重启后旧 HUD 回调引用已销毁场景导致卡死
+    for (const { event, cb } of this.busCbs) bus.off(event, cb);
+    this.busCbs = [];
   }
 
   private injectIcons() {
@@ -223,27 +232,28 @@ export class HUD {
   }
 
   private bindEvents() {
-    bus.on(EVT.GOLD_CHANGED, () => this.updateHeader());
-    bus.on(EVT.GOLD_CHANGED, () => this.updateRate());
-    bus.on(EVT.GOLD_CHANGED, () => this.updatePrestigeButtonState());
-    bus.on(EVT.CRYSTAL_CHANGED, () => this.updateHeader());
-    bus.on(EVT.BALL_VALUE_CHANGED, () => this.updateHeader());
-    bus.on(EVT.CHAPTER_CHANGED, () => this.updateChapterProgress());
-    bus.on(EVT.PEG_PLACED, () => { this.updateHeader(); this.renderShop(); });
-    bus.on(EVT.PEG_UPGRADED, () => { this.updateHeader(); this.renderShop(); });
-    bus.on(EVT.PEG_SOLD, () => { this.updateHeader(); this.renderShop(); });
-    bus.on(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
-    bus.on(EVT.AUTO_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
-    bus.on(EVT.PRESTIGE_AVAILABLE, () => this.showPrestigeModal());
-    bus.on(EVT.BOSS_TRIGGER, () => this.updateBossButtonState());
-    bus.on(EVT.BOSS_DEFEATED, () => this.updateBossButtonState());
-    bus.on(EVT.PRESTIGE_AVAILABLE, () => this.updateTaskHint());
-    bus.on(EVT.BOSS_TRIGGER, () => this.updateTaskHint());
-    bus.on(EVT.BOSS_DEFEATED, () => { this.updateTaskHint(); this.updatePrestigeButtonState(); });
-    bus.on(EVT.CHAPTER_CHANGED, () => this.updateTaskHint());
-    bus.on(EVT.MILESTONE_REACHED, () => this.updateTaskHint());
-    bus.on(EVT.GOLD_CHANGED, () => { this.scheduleTaskHint(); this.updatePrestigeButtonState(); });
-    bus.on(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
+    this.onBus(EVT.GOLD_CHANGED, () => this.updateHeader());
+    this.onBus(EVT.GOLD_CHANGED, () => this.updateRate());
+    this.onBus(EVT.GOLD_CHANGED, () => this.updatePrestigeButtonState());
+    this.onBus(EVT.CRYSTAL_CHANGED, () => this.updateHeader());
+    this.onBus(EVT.BALL_VALUE_CHANGED, () => this.updateHeader());
+    this.onBus(EVT.CHAPTER_CHANGED, () => this.updateChapterProgress());
+    this.onBus(EVT.PEG_PLACED, () => { this.updateHeader(); this.renderShop(); });
+    this.onBus(EVT.PEG_UPGRADED, () => { this.updateHeader(); this.renderShop(); });
+    this.onBus(EVT.PEG_SOLD, () => { this.updateHeader(); this.renderShop(); });
+    this.onBus(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
+    this.onBus(EVT.AUTO_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
+    // 归零弹窗在归零剧情对话结束后才弹出（由 GameScene 发 PRESTIGE_DIALOGUE_DONE）
+    this.onBus(EVT.PRESTIGE_DIALOGUE_DONE, () => this.showPrestigeModal());
+    this.onBus(EVT.BOSS_TRIGGER, () => this.updateBossButtonState());
+    this.onBus(EVT.BOSS_DEFEATED, () => this.updateBossButtonState());
+    this.onBus(EVT.PRESTIGE_AVAILABLE, () => this.updateTaskHint());
+    this.onBus(EVT.BOSS_TRIGGER, () => this.updateTaskHint());
+    this.onBus(EVT.BOSS_DEFEATED, () => { this.updateTaskHint(); this.updatePrestigeButtonState(); });
+    this.onBus(EVT.CHAPTER_CHANGED, () => this.updateTaskHint());
+    this.onBus(EVT.MILESTONE_REACHED, () => this.updateTaskHint());
+    this.onBus(EVT.GOLD_CHANGED, () => { this.scheduleTaskHint(); this.updatePrestigeButtonState(); });
+    this.onBus(EVT.TOAST, (msg: unknown) => this.showToast(String(msg), 'info'));
   }
 
   // 任务提示 RAF 节流：GOLD_CHANGED 高频触发时合并为一帧一次
@@ -374,6 +384,13 @@ export class HUD {
       clearInterval(this.rateTimer);
       this.rateTimer = null;
     }
+  }
+
+  /** bus 监听回调引用（unmount 时统一 off，防止场景重启后旧 HUD 回调引用已销毁场景导致卡死） */
+  private busCbs: Array<{ event: string; cb: (...args: unknown[]) => void }> = [];
+  private onBus(event: string, cb: (...args: unknown[]) => void) {
+    this.busCbs.push({ event, cb });
+    bus.on(event, cb);
   }
 
   /** 基于 totalGold 的 5s 滚动窗口计算金币/秒；窗口内无收益时速率平滑衰减至 0 */

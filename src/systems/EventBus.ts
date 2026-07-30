@@ -13,6 +13,8 @@ export const EVT = {
   ACTIVE_EXPIRED: 'active_expired',
   CHAPTER_CHANGED: 'chapter_changed',
   PRESTIGE_AVAILABLE: 'prestige_available',
+  /** 归零剧情对话已结束，HUD 可弹出归零确认弹窗 */
+  PRESTIGE_DIALOGUE_DONE: 'prestige_dialogue_done',
   TOAST: 'toast',
   SAVE_DONE: 'save_done',
   MARBLE_SELECTED: 'marble_selected',

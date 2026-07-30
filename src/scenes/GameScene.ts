@@ -335,8 +335,23 @@ export class GameScene extends Phaser.Scene {
     });
     this.onBus(EVT.MARBLE_UPGRADED, () => this.hud.refreshMarbleCodex?.());
     this.onBus(EVT.PRESTIGE_AVAILABLE, () => {
-      // 各章首次达到归零条件时，播放对应归零剧情对话
-      this.tryPlayDialogue(chapterPrestigeReadyId(GameState.chapterId));
+      // 各章首次达到归零条件时，播放对应归零剧情对话；对话结束后通知 HUD 弹归零确认窗
+      const dlgId = chapterPrestigeReadyId(GameState.chapterId);
+      if (!DIALOGUE_MAP[dlgId]) {
+        // 没有对话（理论上不会发生）：直接通知 HUD
+        bus.emit(EVT.PRESTIGE_DIALOGUE_DONE);
+        return;
+      }
+      if (GameState.hasSeenDialogue(dlgId)) {
+        // 已看过：跳过对话，直接弹窗
+        bus.emit(EVT.PRESTIGE_DIALOGUE_DONE);
+        return;
+      }
+      this.time.delayedCall(600, () => {
+        this.dialogue.start(DIALOGUE_MAP[dlgId], () => {
+          bus.emit(EVT.PRESTIGE_DIALOGUE_DONE);
+        });
+      });
     });
     this.onBus(EVT.BOSS_DEFEATED, () => {
       // Boss 击败后重新检查章节进度，可能立即触发归零就绪
