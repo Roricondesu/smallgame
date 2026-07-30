@@ -3,6 +3,7 @@ import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { OfflineReportScene } from './scenes/OfflineReportScene';
+import { ChapterSelectScene } from './scenes/ChapterSelectScene';
 
 // 画布尺寸完全跟随容器：RESIZE 模式下 Phaser 用 #game-root 实际尺寸作为画布尺寸
 // 窗口/设备尺寸变化时，画布内部坐标系实时调整，GameScene 在 resize 时重新布局
@@ -29,7 +30,7 @@ const config: Phaser.Types.Core.GameConfig = {
       setBounds: false,
     },
   },
-  scene: [BootScene, MenuScene, GameScene, OfflineReportScene],
+  scene: [BootScene, MenuScene, GameScene, OfflineReportScene, ChapterSelectScene],
 };
 
 new Phaser.Game(config);

@@ -118,10 +118,14 @@ export class HUD {
     this.showToast(`归零进度 ${pct.toFixed(1)}%`, 'prestige');
   }
 
-  /** 归零按钮：仅在 _ready（达标且 Boss 已击败）时显示，否则隐藏 */
+  /** 归零按钮：仅在 _ready（达标且 Boss 已击败）时显示，否则隐藏；无尽模式永远隐藏 */
   private updatePrestigeButtonState() {
     const btn = document.getElementById('btn-prestige');
     if (!btn) return;
+    if (GameState.endlessMode) {
+      btn.style.display = 'none';
+      return;
+    }
     const ready = GameState.save.totalGold >= GameState.chapter.targetGold
       && (!GameState.currentBossId || GameState.isBossDefeated());
     btn.style.display = ready ? 'flex' : 'none';
@@ -175,7 +179,8 @@ export class HUD {
       requestAnimationFrame(() => {
         // 再等一帧确保 shutdown 事件完成
         requestAnimationFrame(() => {
-          this.scene.scene.start('Game');
+          // 归零后跳转到章节选择页（玩家可选择进入新章节、重玩旧章节或无尽模式）
+          this.scene.scene.start('ChapterSelect');
         });
       });
     });

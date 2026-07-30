@@ -42,6 +42,12 @@ export interface SaveData {
   seenDialogues?: string[];
   // Boss 战击败记录：bossId -> 是否已击败（章节内）
   bossDefeated?: Record<string, boolean>;
+  // 最大已解锁章节（1..5）。归零后可重玩已解锁章节
+  maxChapterUnlocked?: number;
+  // 无尽模式是否解锁（5 章全部通关后开启）
+  endlessUnlocked?: boolean;
+  // 是否处于无尽模式（无尽模式下无目标金币，持续挂机）
+  endlessMode?: boolean;
 }
 
 export interface PegConfig {

@@ -183,6 +183,7 @@ export class MenuScene extends Phaser.Scene {
       link.addEventListener('click', () => {
         const act = (link as HTMLElement).dataset.menu;
         if (act === 'start') this.handleStart();
+        else if (act === 'chapters') this.openChapterSelect();
         else if (act === 'slots') this.showSlotPicker();
         else if (act === 'shop') this.showCrystalShop();
         else if (act === 'codex') this.showCodex();
@@ -201,6 +202,12 @@ export class MenuScene extends Phaser.Scene {
     } else {
       this.showSlotPicker();
     }
+  }
+
+  /** 进入章节选择场景 */
+  private openChapterSelect() {
+    this.hideMenuUI();
+    this.scene.start('ChapterSelect');
   }
 
   // ===== 槽位选择 =====

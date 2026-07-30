@@ -496,6 +496,8 @@ class GameStateClass {
   }
 
   checkChapterGoal() {
+    // 无尽模式：无目标金币、不触发任何章节进度剧情/归零
+    if (this._save.endlessMode) return;
     const ch = this.chapter;
     const progress = this._save.storyProgress;
 
@@ -540,7 +542,12 @@ class GameStateClass {
   // ===== Boss 战系统 =====
   /** 当前章节对应的 Boss ID（每章都有 Boss） */
   get currentBossId(): 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy' | null {
-    switch (this.chapterId) {
+    return this.currentBossIdForChapter(this.chapterId);
+  }
+
+  /** 指定章节对应的 Boss ID（用于章节选择页展示） */
+  currentBossIdForChapter(chapterId: number): 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy' | null {
+    switch (chapterId) {
       case 1: return 'boss_frost';
       case 2: return 'boss_skull';
       case 3: return 'boss_ghost';
@@ -572,7 +579,14 @@ class GameStateClass {
     const totalGoldNum = fromBig(this._save.totalGold);
     const crystalGain = Math.max(1, Math.floor(totalGoldNum / 1e6 * crystalGainMul));
     this._save.crystal += toBig(crystalGain);
+    // 解锁逻辑：归零时把 nextChapter 标记为已解锁
     this._save.chapterId = Math.min(5, nextChapter);
+    this._save.maxChapterUnlocked = Math.max(this._save.maxChapterUnlocked ?? 1, this._save.chapterId);
+    // 5 章全部通关（nextChapter > 5）→ 解锁无尽模式
+    if (nextChapter > 5) {
+      this._save.endlessUnlocked = true;
+    }
+    this._save.endlessMode = false; // 归零后默认进入章节选择，由玩家选择是否进入无尽
     this._save.gold = toBig(this.getCrystalLevel('startGold') * 1000);
     this._save.totalGold = 0n;
     this._save.pegs = [];
@@ -589,6 +603,59 @@ class GameStateClass {
     bus.emit(EVT.BALL_VALUE_CHANGED, this._save.ballInitialValue);
     bus.emit(EVT.CHAPTER_CHANGED, this._save.chapterId);
     bus.emit(EVT.MARBLE_SELECTED, '');
+    this.saveGame();
+  }
+
+  /** 最大已解锁章节（1..5） */
+  get maxChapterUnlocked(): number {
+    return this._save.maxChapterUnlocked ?? 1;
+  }
+
+  /** 无尽模式是否已解锁 */
+  get endlessUnlocked(): boolean {
+    return !!this._save.endlessUnlocked;
+  }
+
+  /** 是否处于无尽模式 */
+  get endlessMode(): boolean {
+    return !!this._save.endlessMode;
+  }
+
+  /** 选择并进入已解锁章节（来自章节选择页） */
+  enterChapter(chapterId: number) {
+    if (chapterId < 1 || chapterId > 5) return;
+    if (chapterId > this.maxChapterUnlocked) return;
+    this._save.chapterId = chapterId;
+    this._save.endlessMode = false;
+    this._save.storyProgress = `ch${chapterId}_intro`;
+    // 切换章节视为新周目：重置 Boss 击败记录与 pegs
+    this._save.pegs = [];
+    this._save.autoDroppers = {};
+    this._save.skillLevels = {};
+    this._save.bossDefeated = {};
+    this._save.gold = toBig(this.getCrystalLevel('startGold') * 1000);
+    this._save.totalGold = 0n;
+    this._save.ballInitialValue = toBig(1);
+    this._save.selectedMarble = '';
+    bus.emit(EVT.CHAPTER_CHANGED, this._save.chapterId);
+    this.saveGame();
+  }
+
+  /** 进入无尽模式（无目标金币，持续挂机） */
+  enterEndless() {
+    if (!this._save.endlessUnlocked) return;
+    this._save.endlessMode = true;
+    this._save.chapterId = 5; // 使用第 5 章背景
+    this._save.pegs = [];
+    this._save.autoDroppers = {};
+    this._save.skillLevels = {};
+    this._save.bossDefeated = {};
+    this._save.gold = toBig(this.getCrystalLevel('startGold') * 1000);
+    this._save.totalGold = 0n;
+    this._save.ballInitialValue = toBig(1);
+    this._save.selectedMarble = '';
+    this._save.storyProgress = 'endless';
+    bus.emit(EVT.CHAPTER_CHANGED, this._save.chapterId);
     this.saveGame();
   }
 
