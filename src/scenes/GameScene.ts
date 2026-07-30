@@ -662,6 +662,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
+    // 对话进行时游戏放慢 10 倍，确保玩家看完剧情
+    this.time.timeScale = this.dialogue?.isPlaying() ? 0.1 : 1;
     // 同步球上数字文字到球的位置 + 检测停滞球
     for (const ball of this.balls) {
       ball.text.setPosition(ball.sprite.x, ball.sprite.y - 14);
