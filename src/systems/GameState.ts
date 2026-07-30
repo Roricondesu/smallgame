@@ -748,6 +748,13 @@ class GameStateClass {
     return this.combo;
   }
 
+  /** 当前连击倍率（只读，不递增连击数；过期返回 1） */
+  currentComboMul(): number {
+    const now = Date.now();
+    if (now - this.comboTimer > 1200) return 1;
+    return 1 + Math.min(2, this.combo * 0.05);
+  }
+
   // ===== 离线 =====
   applyOffline() {
     const { gold, seconds } = SaveSystem.calculateOffline(this._save);

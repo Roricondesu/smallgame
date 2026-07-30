@@ -666,9 +666,8 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
-    // 命中本体 → 造成伤害 = 球数值（含贤者副本）
-    let dmg = ball.value;
-    if (ball.sageCopy > 0n) dmg = dmg + ball.sageCopy;
+    // 命中本体 → 造成伤害 = 下落后最终结算数值（含槽位/贤者副本/元素弹珠/连击等直接加成）
+    let dmg = this.computeSettledGold(ball, GameState.currentComboMul());
     if (dmg <= 0n) return;
 
     // 骷髅 boss：骨盾优先吸收伤害
@@ -1038,6 +1037,27 @@ export class GameScene extends Phaser.Scene {
 
   private settleBall(ball: Ball) {
     // boss 战时未命中本体的玩家球落底后正常加金币（命中本体的球已在碰撞中销毁）
+    const combo = GameState.addCombo();
+    const comboMul = 1 + Math.min(2, combo * 0.05);
+    const gold = this.computeSettledGold(ball, comboMul);
+    GameState.addGold(gold);
+    GameState.onBallSettled(ball.value);
+    this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `+${formatNum(gold)}`, 0xf0b429);
+    if (combo > 2) {
+      this.comboDisplay.setText(`${combo} 连击! ×${comboMul.toFixed(2)}`);
+      this.comboDisplay.setAlpha(1);
+      this.tweens.killTweensOf(this.comboDisplay);
+      this.tweens.add({ targets: this.comboDisplay, alpha: 0, duration: 800, delay: 600 });
+    }
+  }
+
+  /**
+   * 计算球落底的最终结算数值（与加金币结算一致）：
+   * 槽位倍率（中央 ×2）→ 贤者副本 → 元素弹珠（冰翻倍/暗复制）→ 连击倍率。
+   * 元素弹珠效果会生成对应浮动文字。纯计算，不修改金币/连击状态。
+   * 用于：① settleBall 加金币；② fireBallBossBody 计算对 Boss 伤害（伤害=最终结算数值）。
+   */
+  private computeSettledGold(ball: Ball, comboMul: number): bigint {
     // 判定边界与结算槽绘制保持一致：从 gridX 开始，宽度为网格宽度
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const slotW = gridW / BALANCE.bottomSlots;
@@ -1074,19 +1094,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const combo = GameState.addCombo();
-    const comboMul = 1 + Math.min(2, combo * 0.05);
     gold = bigMulNum(gold, comboMul);
-
-    GameState.addGold(gold);
-    GameState.onBallSettled(ball.value);
-    this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `+${formatNum(gold)}`, 0xf0b429);
-    if (combo > 2) {
-      this.comboDisplay.setText(`${combo} 连击! ×${comboMul.toFixed(2)}`);
-      this.comboDisplay.setAlpha(1);
-      this.tweens.killTweensOf(this.comboDisplay);
-      this.tweens.add({ targets: this.comboDisplay, alpha: 0, duration: 800, delay: 600 });
-    }
+    return gold;
   }
 
   private destroyBall(index: number) {
