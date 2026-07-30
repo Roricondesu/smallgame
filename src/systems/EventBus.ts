@@ -24,6 +24,8 @@ export const EVT = {
   MILESTONE_REACHED: 'milestone_reached',
   BOSS_TRIGGER: 'boss_trigger',
   BOSS_DEFEATED: 'boss_defeated',
+  /** 场景背景暗化设置变化（参数：暗化百分比 0-80） */
+  BG_DARKEN_CHANGED: 'bg_darken_changed',
 } as const;
 
 type EventCallback = (...args: unknown[]) => void;

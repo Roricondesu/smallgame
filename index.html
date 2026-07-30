@@ -1266,7 +1266,8 @@
       padding: 4px;
     }
     .chapter-card {
-      background: linear-gradient(180deg, rgba(48,54,61,0.35), rgba(20,24,30,0.5));
+      position: relative;
+      background: #141921;
       border: 1px solid #30363d;
       border-radius: 12px;
       padding: 16px;
@@ -1274,6 +1275,24 @@
       flex-direction: column;
       gap: 8px;
       transition: transform 0.15s, border-color 0.15s;
+      overflow: hidden;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      min-height: 180px;
+    }
+    /* 80% 暗化遮罩层（场景图之上，文字之下） */
+    .chapter-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(5,7,9,0.82), rgba(5,7,9,0.78));
+      pointer-events: none;
+      z-index: 0;
+    }
+    .chapter-card > * { position: relative; z-index: 1; }
+    .chapter-card.endless::before {
+      background: linear-gradient(180deg, rgba(40,20,70,0.82), rgba(20,10,40,0.78));
     }
     .chapter-card:hover { transform: translateY(-2px); border-color: #58a6ff; }
     .chapter-card.locked {
@@ -1281,7 +1300,6 @@
       filter: grayscale(0.5);
     }
     .chapter-card.endless {
-      background: linear-gradient(180deg, rgba(170,136,255,0.18), rgba(60,40,90,0.4));
       border-color: #a371f7;
     }
     .chapter-card.endless.active {

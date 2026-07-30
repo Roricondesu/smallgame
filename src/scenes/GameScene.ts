@@ -184,9 +184,9 @@ export class GameScene extends Phaser.Scene {
     // 先计算布局参数（gridX/gridY/settleY），再创建元素，最后 applyLayout 统一定位
     this.computeLayout();
 
-    // 章节背景图（最底层）+ 30% 变暗 tint（0xB2 = 70% 亮度）
+    // 章节背景图（最底层）+ 按设置暗化 tint（默认 30% 暗化）
     this.bgImage = this.add.image(DESIGN_W / 2, DESIGN_H / 2, `bg_ch${GameState.chapterId}`).setDepth(-100);
-    this.bgImage.setTint(0xb2b2b2);
+    this.applyBgDarken();
 
     // 上下渐变透明遮罩：顶部/底部融入场景背景色（#050709），中间透明
     this.bgGradient = this.add.graphics().setDepth(-99);
@@ -388,10 +388,12 @@ export class GameScene extends Phaser.Scene {
       }
     });
     this.onBus(EVT.CHAPTER_CHANGED, () => {
-      // 切换章节背景（重新应用 30% 变暗 tint 以防被清除）
+      // 切换章节背景（重新应用暗化 tint）
       this.bgImage.setTexture(`bg_ch${GameState.chapterId}`);
-      this.bgImage.setTint(0xb2b2b2);
+      this.applyBgDarken();
     });
+    // 设置中调整场景暗化时实时应用
+    this.onBus(EVT.BG_DARKEN_CHANGED, () => this.applyBgDarken());
 
     // 定时器
     this.time.addEvent({ delay: 100, loop: true, callback: this.tickAuto, callbackScope: this });
@@ -507,6 +509,17 @@ export class GameScene extends Phaser.Scene {
     if (this.comboDisplay) this.comboDisplay.setPosition(DESIGN_W - 20, 80);
     // 根据画布尺寸缩放 camera，使设计区域完整可见
     this.fitCamera();
+  }
+
+  /** 按设置的场景暗化百分比应用背景 tint（0%=原图，80%=极暗） */
+  private applyBgDarken() {
+    const pct = parseInt(localStorage.getItem('pa_setting_bg_darken') || '30', 10);
+    const clamped = Math.max(0, Math.min(80, pct));
+    // 亮度 = 1 - 暗化比例；tint 各通道 = floor(亮度 * 255)
+    const brightness = 1 - clamped / 100;
+    const c = Math.floor(brightness * 255);
+    const tint = (c << 16) | (c << 8) | c;
+    this.bgImage.setTint(tint);
   }
 
   // 绘制六边形蜂窝点阵 + 定位半透明底板

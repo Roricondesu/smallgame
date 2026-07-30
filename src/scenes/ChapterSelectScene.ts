@@ -63,6 +63,8 @@ export class ChapterSelectScene extends Phaser.Scene {
       const bossName = bossId ? BOSS_INFO[bossId].name : '无';
       const card = document.createElement('div');
       card.className = `chapter-card ${unlocked ? '' : 'locked'}`;
+      // 卡片背景：章节场景图（由 CSS ::before 叠加 80% 暗化遮罩）
+      card.style.backgroundImage = `url('/backgrounds/ch${ch.id}.png')`;
       card.innerHTML = `
         <div class="chapter-card-head">
           <div class="chapter-no">第 ${ch.id} 章</div>
@@ -80,9 +82,10 @@ export class ChapterSelectScene extends Phaser.Scene {
       btn?.addEventListener('click', () => this.selectChapter(ch.id));
     }
 
-    // 无尽模式卡片
+    // 无尽模式卡片（复用第 5 章背景图，由 CSS ::before 叠加紫色暗化遮罩）
     const endlessCard = document.createElement('div');
     endlessCard.className = `chapter-card endless ${endlessUnlocked ? '' : 'locked'} ${endlessActive ? 'active' : ''}`;
+    endlessCard.style.backgroundImage = `url('/backgrounds/ch5.png')`;
     const endlessTierText = endlessActive
       ? `已击败 ${GameState.endlessBossTier} 个 Boss · 当前阈值 ${formatNum(GameState.currentEndlessThreshold)}`
       : '每达到金币阈值触发 Boss（循环 5 位 Boss）';

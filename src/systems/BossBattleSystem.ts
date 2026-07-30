@@ -87,6 +87,8 @@ export class BossDialogueTrigger {
     this.bound = true;
     this.dialogue = dialogue;
     this.triggerCb = () => {
+      // 无尽模式：Boss 循环出现，跳过开场对话避免重复
+      if (GameState.endlessMode) return;
       const dlg = DIALOGUE_MAP[chapterBossId(GameState.chapterId)];
       if (dlg) this.dialogue?.start(dlg);
     };

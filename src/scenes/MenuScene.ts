@@ -5,6 +5,7 @@ import { GameState, formatNum, toBig } from '../systems/GameState';
 import { SaveSystem, SLOT_COUNT } from '../systems/SaveSystem';
 import { CRYSTAL_UPGRADES } from '../data/chapters';
 import { svgIcon, type IconKey } from '../ui/icons';
+import { bus, EVT } from '../systems/EventBus';
 
 interface FallingBall {
   img: Phaser.GameObjects.Image;
@@ -369,6 +370,14 @@ export class MenuScene extends Phaser.Scene {
               <div class="settings-label">显示帧率</div>
               <div class="toggle" data-settings="fps"><span class="toggle-dot"></span></div>
             </div>
+            <div class="settings-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                <div class="settings-label">场景暗化</div>
+                <span id="bg-darken-val" style="min-width:50px; text-align:right; color:var(--gold); font-weight:600; font-size:12px;">30%</span>
+              </div>
+              <input type="range" id="bg-darken-slider" min="0" max="80" step="5" value="30" style="width:100%; accent-color:var(--gold);">
+              <p class="muted" style="margin:0; font-size:11px;">控制游戏内场景背景图的暗化程度，0%=原图，80%=极暗。</p>
+            </div>
             <div class="settings-row">
               <div class="settings-label">自动保存间隔</div>
               <select id="settings-autosave" class="settings-select">
@@ -451,6 +460,17 @@ export class MenuScene extends Phaser.Scene {
     sel?.addEventListener('change', () => {
       localStorage.setItem('pa_setting_autosave', sel.value);
     });
+    // 场景暗化滑块：实时广播，GameScene 接收后调整背景 tint
+    const darkenSlider = ov.querySelector('#bg-darken-slider') as HTMLInputElement;
+    const darkenVal = ov.querySelector('#bg-darken-val') as HTMLElement;
+    if (darkenSlider && darkenVal) {
+      darkenSlider.addEventListener('input', () => {
+        const pct = parseInt(darkenSlider.value, 10);
+        darkenVal.textContent = `${pct}%`;
+        localStorage.setItem('pa_setting_bg_darken', String(pct));
+        bus.emit(EVT.BG_DARKEN_CHANGED, pct);
+      });
+    }
     // Dev 倍率滑块
     const slider = ov.querySelector('#dev-mul-slider') as HTMLInputElement;
     const valEl = ov.querySelector('#dev-mul-val') as HTMLElement;
@@ -546,6 +566,14 @@ export class MenuScene extends Phaser.Scene {
     });
     const sel = ov.querySelector('#settings-autosave') as HTMLSelectElement;
     if (sel) sel.value = localStorage.getItem('pa_setting_autosave') || '30';
+    // 场景暗化滑块
+    const darkenSlider = ov.querySelector('#bg-darken-slider') as HTMLInputElement;
+    const darkenVal = ov.querySelector('#bg-darken-val') as HTMLElement;
+    if (darkenSlider && darkenVal) {
+      const pct = parseInt(localStorage.getItem('pa_setting_bg_darken') || '30', 10);
+      darkenSlider.value = String(pct);
+      darkenVal.textContent = `${pct}%`;
+    }
   }
 
   private fpsRaf: number | null = null;
