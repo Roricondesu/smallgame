@@ -953,11 +953,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private settleBall(ball: Ball) {
-    // boss 战激活时：未命中本体的玩家球落底后直接消失，不加金币、不造成伤害
-    if (this.bossActive) {
-      this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, '未命中', 0x7d8896);
-      return;
-    }
+    // boss 战时未命中本体的玩家球落底后正常加金币（命中本体的球已在碰撞中销毁）
     // 判定边界与结算槽绘制保持一致：从 gridX 开始，宽度为网格宽度
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const slotW = gridW / BALANCE.bottomSlots;
@@ -1228,13 +1224,12 @@ export class GameScene extends Phaser.Scene {
 
     // Boss 头像（底部中央）
     this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(1);
-    // 本体 sensor：静态、不阻挡球，仅检测碰撞；用 peg_placeholder 纹理避免与立绘冲突
-    const bossMatter = this.matter.add.image(cx, by, 'peg_placeholder', undefined, {
-      isStatic: true,
-      isSensor: true,
-      shape: { type: 'circle', radius: 58 },
-      label: 'boss_body',
-    });
+    // 本体 sensor：用 staticImage 确保静态，不受重力；sensor 仅检测碰撞不阻挡球
+    const bossMatter = this.matter.add.staticImage(cx, by, 'peg_placeholder', undefined);
+    bossMatter.setStatic(true);
+    bossMatter.setSensor(true);
+    bossMatter.setCircle(58);
+    (bossMatter.body as MatterJS.Body).label = 'boss_body';
     bossMatter.setVisible(false);
     bossMatter.setDisplaySize(1, 1);
     this.bossBodyImg = bossMatter;
