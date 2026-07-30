@@ -38,6 +38,7 @@ export class BootScene extends Phaser.Scene {
     this.makePegTextures();
     this.makeParticleTexture();
     this.makeElementBallTextures();
+    this.makeBossTextures();
   }
 
   create() {
@@ -117,6 +118,142 @@ export class BootScene extends Phaser.Scene {
       g.lineBetween(2, 9, 16, 9);
       g.lineBetween(9, 2, 9, 16);
       g.generateTexture(key, 18, 18);
+      g.destroy();
+    }
+  }
+
+  // Boss 本体程序化纹理：每个 boss 独特外观，128x128，保证可见不依赖外部图片加载
+  private makeBossTextures() {
+    const SIZE = 128;
+    const C = SIZE / 2;        // 圆心
+    const R = 56;              // 主体半径
+
+    // 通用主体绘制：径向色块 + 描边 + 高光
+    const drawBody = (g: Phaser.GameObjects.Graphics, color: number, glow: number) => {
+      // 外光晕
+      g.fillStyle(glow, 0.25);
+      g.fillCircle(C, C, R + 8);
+      // 主体
+      g.fillStyle(color, 1);
+      g.fillCircle(C, C, R);
+      // 描边
+      g.lineStyle(4, glow, 1);
+      g.strokeCircle(C, C, R);
+      // 顶部高光
+      g.fillStyle(0xffffff, 0.18);
+      g.fillCircle(C - 14, C - 16, 18);
+    };
+
+    // boss_skull —— 骷髅守卫：暗灰主体 + 黑色眼眶 + 白色瞳孔
+    {
+      const g = this.make.graphics();
+      drawBody(g, 0x4a4f57, 0x8b949e);
+      // 眼眶
+      g.fillStyle(0x000000, 0.9);
+      g.fillCircle(C - 16, C - 4, 11);
+      g.fillCircle(C + 16, C - 4, 11);
+      // 瞳孔（红光）
+      g.fillStyle(0xff5555, 1);
+      g.fillCircle(C - 16, C - 4, 4);
+      g.fillCircle(C + 16, C - 4, 4);
+      // 牙齿
+      g.fillStyle(0xffffff, 0.85);
+      for (let i = -2; i <= 2; i++) {
+        g.fillRect(C + i * 10 - 3, C + 14, 6, 12);
+      }
+      g.generateTexture('boss_tex_skull', SIZE, SIZE);
+      g.destroy();
+    }
+
+    // boss_frost —— 霜卫：冰蓝主体 + 冰晶尖刺
+    {
+      const g = this.make.graphics();
+      drawBody(g, 0x6ec5ff, 0xc8eeff);
+      // 六根冰晶尖刺
+      g.fillStyle(0xffffff, 0.9);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const x1 = C + Math.cos(a) * (R - 6);
+        const y1 = C + Math.sin(a) * (R - 6);
+        const x2 = C + Math.cos(a) * (R + 14);
+        const y2 = C + Math.sin(a) * (R + 14);
+        g.lineStyle(5, 0xeaf6ff, 1);
+        g.lineBetween(x1, y1, x2, y2);
+      }
+      // 中心冰核
+      g.fillStyle(0xffffff, 0.95);
+      g.fillCircle(C, C + 2, 12);
+      g.generateTexture('boss_tex_frost', SIZE, SIZE);
+      g.destroy();
+    }
+
+    // boss_ghost —— 熵之幻影：紫色半透幽灵 + 波浪底边
+    {
+      const g = this.make.graphics();
+      drawBody(g, 0x6b3fa0, 0xbc8cff);
+      // 眼睛
+      g.fillStyle(0xffffff, 0.95);
+      g.fillCircle(C - 14, C - 6, 7);
+      g.fillCircle(C + 14, C - 6, 7);
+      g.fillStyle(0x000000, 0.8);
+      g.fillCircle(C - 14, C - 6, 3);
+      g.fillCircle(C + 14, C - 6, 3);
+      // 波浪底边
+      g.lineStyle(3, 0xe0c8ff, 0.8);
+      for (let i = 0; i < 5; i++) {
+        const sx = C - 24 + i * 12;
+        g.lineBetween(sx, C + 22, sx + 6, C + 30);
+        g.lineBetween(sx + 6, C + 30, sx + 12, C + 22);
+      }
+      g.generateTexture('boss_tex_ghost', SIZE, SIZE);
+      g.destroy();
+    }
+
+    // boss_chameleon —— 幻彩守卫：绿色主体 + 彩虹环
+    {
+      const g = this.make.graphics();
+      drawBody(g, 0x3fb950, 0x56d364);
+      // 彩虹环（6 段不同色）
+      const colors = [0xff6b6b, 0xf0b429, 0x56d364, 0x58a6ff, 0xbc8cff, 0xff7b72];
+      g.lineStyle(6, 0xffffff, 1);
+      for (let i = 0; i < 6; i++) {
+        const a0 = (i / 6) * Math.PI * 2 - Math.PI / 2;
+        const a1 = ((i + 1) / 6) * Math.PI * 2 - Math.PI / 2;
+        g.lineStyle(6, colors[i], 1);
+        g.beginPath();
+        g.arc(C, C, R - 10, a0, a1, false);
+        g.strokePath();
+      }
+      // 中心眼
+      g.fillStyle(0xffffff, 0.95);
+      g.fillCircle(C, C, 10);
+      g.fillStyle(0x000000, 0.9);
+      g.fillCircle(C, C, 5);
+      g.generateTexture('boss_tex_chameleon', SIZE, SIZE);
+      g.destroy();
+    }
+
+    // boss_entropy —— 熵核：暗紫主体 + 混沌螺旋
+    {
+      const g = this.make.graphics();
+      drawBody(g, 0x2a1530, 0xa371f7);
+      // 混沌螺旋
+      g.lineStyle(3, 0xff6bff, 0.9);
+      g.beginPath();
+      for (let t = 0; t < Math.PI * 6; t += 0.1) {
+        const rr = 2 + t * 4;
+        const px = C + Math.cos(t) * rr;
+        const py = C + Math.sin(t) * rr;
+        if (t === 0) g.moveTo(px, py);
+        else g.lineTo(px, py);
+      }
+      g.strokePath();
+      // 核心
+      g.fillStyle(0xffffff, 0.9);
+      g.fillCircle(C, C, 8);
+      g.fillStyle(0xff6bff, 1);
+      g.fillCircle(C, C, 4);
+      g.generateTexture('boss_tex_entropy', SIZE, SIZE);
       g.destroy();
     }
   }

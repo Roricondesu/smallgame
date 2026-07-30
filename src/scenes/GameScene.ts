@@ -89,6 +89,21 @@ export class GameScene extends Phaser.Scene {
   private bossMoveTween: Phaser.Tweens.Tween | null = null;
   /** boss 技能定时器 */
   private bossSkillTimer: Phaser.Time.TimerEvent | null = null;
+  // ===== boss 专属技能状态 =====
+  /** 骷髅 boss：骨盾剩余吸收量，>0 时下一次命中先扣盾 */
+  private bossShield = 0n;
+  /** 骷髅 boss：骨盾视觉 ring */
+  private bossShieldRing: Phaser.GameObjects.Arc | null = null;
+  /** 幻影 boss：相位结束时间戳，>now 时无法被命中 */
+  private bossPhaseUntil = 0;
+  /** 幻彩 boss：当前弱点元素，仅该元素弹珠可造成伤害 */
+  private bossWeakness: 'fire' | 'ice' | 'thunder' | 'poison' | 'holy' | 'dark' | null = null;
+  /** 幻彩 boss：弱点标记文字 */
+  private bossWeaknessText: Phaser.GameObjects.Text | null = null;
+  /** 霜卫 boss：冰冻结束时间戳，期间玩家球减速 */
+  private bossFrostUntil = 0;
+  /** 血条宽度（缩短后） */
+  private readonly bossBarW = 160;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -1214,6 +1229,11 @@ export class GameScene extends Phaser.Scene {
     // HP = 章节目标金币（与 targetGold 同量级，玩家需积累足量数值的弹珠才能击败）
     this.bossMaxHp = GameState.chapter.targetGold;
     this.bossHp = this.bossMaxHp;
+    // 重置技能状态
+    this.bossShield = 0n;
+    this.bossPhaseUntil = 0;
+    this.bossFrostUntil = 0;
+    this.bossWeakness = null;
 
     // boss 球纹理：按 boss 选色
     const bossTexMap: Record<BossId, string> = {
@@ -1224,19 +1244,25 @@ export class GameScene extends Phaser.Scene {
 
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const cx = this.gridX + gridW / 2;
-    // boss 本体放大到 144，位于底部结算区上方
-    const bossSize = 144;
-    const by = this.settleY + 70;
+    // boss 本体放大到 132，位于底部结算区上方
+    const bossSize = 132;
+    const by = this.settleY - 86; // 悬于结算区上方，避免遮挡结算槽
     this.bossCx = cx;
     this.bossCy = by;
 
-    // Boss 头像（底部中央）—— 纯显示对象，不创建 Matter 物理体
+    // Boss 本体（使用程序化纹理，保证可见）—— 纯显示对象，不创建 Matter 物理体
     // 命中判定用距离检测，避免 staticImage/sensor 的渲染与重力问题
-    this.bossSprite = this.add.image(cx, by, 'portrait_' + id)
+    this.bossSprite = this.add.image(cx, by, info.tex)
       .setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(1);
 
+    // 入场动画：从下方弹入 + 闪一下确认可见
+    this.bossSprite.setAlpha(0).setScale(0.4);
+    this.tweens.add({
+      targets: this.bossSprite, alpha: 1, scale: 1, duration: 500, ease: 'Back.out',
+    });
+
     // Boss 左右移动（章节越高移动越快、范围越大）
-    const moveRange = Math.min(gridW / 2 - bossSize / 2, 140);
+    const moveRange = Math.min(gridW / 2 - bossSize / 2, 130);
     const moveDur = id === 'boss_entropy' ? 1800 : id === 'boss_chameleon' ? 2200 : 2800;
     this.bossMoveTween = this.tweens.add({
       targets: this.bossSprite,
@@ -1245,18 +1271,26 @@ export class GameScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1,
       ease: 'Sine.inOut',
-      onUpdate: () => { if (this.bossSprite) this.bossCx = this.bossSprite.x; },
+      onUpdate: () => {
+        if (this.bossSprite) {
+          this.bossCx = this.bossSprite.x;
+          // 同步骨盾/弱点标记位置
+          if (this.bossShieldRing) this.bossShieldRing.setPosition(this.bossCx, this.bossCy);
+          if (this.bossWeaknessText) this.bossWeaknessText.setPosition(this.bossCx, this.bossCy + 50);
+        }
+      },
     });
 
     // Boss 名字 + HP 条（跟随 boss 移动）
-    this.bossNameText = this.add.text(cx, by - 96, info.name, {
+    const bw = this.bossBarW;
+    this.bossNameText = this.add.text(cx, by - 84, info.name, {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '15px',
       color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(7);
-    this.bossHpBarBg = this.add.rectangle(cx, by - 78, 240, 5, 0x000000, 0.6)
+    this.bossHpBarBg = this.add.rectangle(cx, by - 66, bw, 5, 0x000000, 0.6)
       .setStrokeStyle(1, 0xffffff, 0.3).setDepth(7);
-    this.bossHpBarFill = this.add.rectangle(cx - 120, by - 78, 240, 5, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
-    this.bossHpText = this.add.text(cx, by - 66, '', {
+    this.bossHpBarFill = this.add.rectangle(cx - bw / 2, by - 66, bw, 5, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
+    this.bossHpText = this.add.text(cx, by - 54, '', {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '9px',
       color: '#ffcc66', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(8);
@@ -1269,37 +1303,122 @@ export class GameScene extends Phaser.Scene {
       duration: moveDur, yoyo: true, repeat: -1, ease: 'Sine.inOut',
     });
 
+    // 幻彩 boss：开局设定初始弱点
+    if (id === 'boss_chameleon') this.setBossWeakness(this.randomWeakness());
+
     // 定时生成 boss 球：章节越高频率越快
     const interval = id === 'boss_frost' ? 3200 : id === 'boss_entropy' ? 1500 : 2200;
     this.bossBallTimer = this.time.addEvent({ delay: interval, loop: true, callback: this.spawnBossBall, callbackScope: this });
     // 立即先投一个
     this.spawnBossBall();
 
-    // 技能定时器：每隔一段时间释放技能（章节越高越频繁）
+    // 技能定时器：每隔一段时间释放专属技能（章节越高越频繁）
     const skillInterval = id === 'boss_entropy' ? 8000 : id === 'boss_chameleon' ? 10000 : 12000;
     this.bossSkillTimer = this.time.addEvent({ delay: skillInterval, loop: true, callback: this.bossSkill, callbackScope: this });
 
-    this.hud.showToast(`${info.name} 现身！用弹珠击中它的本体才能造成伤害！`, 'prestige');
+    this.hud.showToast(`${info.name} 现身！技能：${info.skillName}（${info.skillDesc}）`, 'prestige');
   }
 
-  /** boss 技能：脉冲波 —— 清除场上所有玩家球（需重新投放）+ 连发多球 */
+  /** boss 释放专属技能：按 bossId 分派 */
   private bossSkill() {
-    if (!this.bossActive) return;
-    const info = this.bossId ? BOSS_INFO[this.bossId] : null;
-    // 脉冲波视觉效果
-    if (this.bossSprite && info) {
-      const wave = this.add.circle(this.bossCx, this.bossCy, 30, 0xff6b6b, 0)
-        .setStrokeStyle(3, 0xff6b6b, 0.8).setDepth(5);
-      this.tweens.add({
-        targets: wave, radius: 400, alpha: 0,
-        duration: 600, onComplete: () => wave.destroy(),
-      });
-      this.hud.showToast(`${info.name} 释放技能！`, 'prestige');
+    if (!this.bossActive || !this.bossId) return;
+    switch (this.bossId) {
+      case 'boss_skull':      this.bossSkillSkull(); break;
+      case 'boss_frost':      this.bossSkillFrost(); break;
+      case 'boss_ghost':      this.bossSkillGhost(); break;
+      case 'boss_chameleon':   this.bossSkillChameleon(); break;
+      case 'boss_entropy':    this.bossSkillEntropy(); break;
     }
-    // 连发 3 个 boss 球
-    for (let i = 0; i < 3; i++) {
-      this.time.delayedCall(i * 200, () => this.spawnBossBall());
+  }
+
+  /** 骷髅守卫：骨盾 —— 召唤一层骨盾吸收下次伤害，需击碎才能继续扣血 */
+  private bossSkillSkull() {
+    if (!this.bossSprite) return;
+    // 骨盾吸收量 = boss 最大 HP 的 5%
+    this.bossShield = this.bossMaxHp / 20n || 1n;
+    if (this.bossShieldRing) this.bossShieldRing.destroy();
+    this.bossShieldRing = this.add.circle(this.bossCx, this.bossCy, 50, 0xffffff, 0)
+      .setStrokeStyle(4, 0xeeeeee, 0.9).setDepth(5);
+    this.tweens.add({ targets: this.bossShieldRing, alpha: 0.6, duration: 300, yoyo: true, repeat: -1 });
+    this.hud.showToast('骷髅守卫召唤【骨盾】！先击碎骨盾', 'prestige');
+  }
+
+  /** 霜卫：冰霜新星 —— 冰封全场玩家弹珠，3 秒内下落减速 */
+  private bossSkillFrost() {
+    if (!this.bossSprite) return;
+    this.bossFrostUntil = Date.now() + 3000;
+    // 全场冰冻视觉：蓝色脉冲波
+    const wave = this.add.circle(this.bossCx, this.bossCy, 30, 0x6ec5ff, 0)
+      .setStrokeStyle(3, 0xc8eeff, 0.9).setDepth(5);
+    this.tweens.add({ targets: wave, radius: 500, alpha: 0, duration: 700, onComplete: () => wave.destroy() });
+    // 玩家球施加向上减速
+    for (const b of this.balls) {
+      if (b.source === 'boss') continue;
+      const v = b.sprite.body?.velocity;
+      if (v) b.sprite.setVelocity(v.x * 0.3, v.y * 0.3);
     }
+    this.hud.showToast('霜卫释放【冰霜新星】！弹珠减速 3 秒', 'prestige');
+  }
+
+  /** 熵之幻影：相位偏移 —— 进入虚影 4 秒，期间无法被命中 */
+  private bossSkillGhost() {
+    if (!this.bossSprite) return;
+    this.bossPhaseUntil = Date.now() + 4000;
+    this.bossSprite.setAlpha(0.3);
+    this.tweens.add({ targets: this.bossSprite, alpha: { from: 0.3, to: 0.6 }, duration: 400, yoyo: true, repeat: 9 });
+    this.time.delayedCall(4000, () => { this.bossSprite?.setAlpha(1); });
+    this.hud.showToast('熵之幻影进入【相位偏移】！4 秒内无法命中', 'prestige');
+  }
+
+  /** 幻彩守卫：变色伪装 —— 切换弱点元素 */
+  private bossSkillChameleon() {
+    this.setBossWeakness(this.randomWeakness());
+    this.hud.showToast(`幻彩守卫变色！当前弱点：${this.weaknessLabel(this.bossWeakness)}`, 'prestige');
+  }
+
+  /** 熵核：熵之爆发 —— 瞬移到新位置并连发多枚高速球 */
+  private bossSkillEntropy() {
+    if (!this.bossSprite) return;
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const cx = this.gridX + gridW / 2;
+    const moveRange = Math.min(gridW / 2 - 80, 130);
+    // 瞬移到反方向位置
+    const newX = this.bossCx < cx ? cx + moveRange : cx - moveRange;
+    this.bossSprite.setPosition(newX, this.bossCy);
+    this.bossCx = newX;
+    // 残影特效
+    const ghost = this.add.image(this.bossCx, this.bossCy, BOSS_INFO.boss_entropy.tex)
+      .setDisplaySize(132, 132).setAlpha(0.5).setDepth(5);
+    this.tweens.add({ targets: ghost, alpha: 0, scale: 1.3, duration: 400, onComplete: () => ghost.destroy() });
+    // 连发 4 个 boss 球
+    for (let i = 0; i < 4; i++) {
+      this.time.delayedCall(i * 180, () => this.spawnBossBall());
+    }
+    this.hud.showToast('熵核释放【熵之爆发】！瞬移并连发混沌球', 'prestige');
+  }
+
+  /** 设置幻彩 boss 的弱点元素 + 视觉标记 */
+  private setBossWeakness(el: 'fire' | 'ice' | 'thunder' | 'poison' | 'holy' | 'dark') {
+    this.bossWeakness = el;
+    if (this.bossWeaknessText) this.bossWeaknessText.destroy();
+    const colorMap: Record<string, string> = {
+      fire: '#ff6b3d', ice: '#6ec5ff', thunder: '#ffd166',
+      poison: '#4ade80', holy: '#fff5b3', dark: '#a371f7',
+    };
+    this.bossWeaknessText = this.add.text(this.bossCx, this.bossCy + 50, `弱点:${this.weaknessLabel(el)}`, {
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '12px',
+      color: colorMap[el], stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(8);
+  }
+
+  private randomWeakness(): 'fire' | 'ice' | 'thunder' | 'poison' | 'holy' | 'dark' {
+    const els: Array<'fire' | 'ice' | 'thunder' | 'poison' | 'holy' | 'dark'> = ['fire', 'ice', 'thunder', 'poison', 'holy', 'dark'];
+    return els[Phaser.Math.Between(0, els.length - 1)];
+  }
+
+  private weaknessLabel(el: string | null): string {
+    const map: Record<string, string> = { fire: '火', ice: '冰', thunder: '雷', poison: '毒', holy: '圣', dark: '暗' };
+    return el ? (map[el] || el) : '无';
   }
 
   /** 按 boss 强度返回弹珠参数：越靠后章节，球越大、越快、数值越高、向上加速越强（大幅强化） */
@@ -1357,7 +1476,7 @@ export class GameScene extends Phaser.Scene {
   private updateBossHpDisplay() {
     if (!this.bossHpBarFill || !this.bossHpText || this.bossMaxHp <= 0n) return;
     const ratio = Number(Number(this.bossHp * 10000n / this.bossMaxHp) / 10000);
-    const w = Math.max(0, Math.min(1, ratio)) * 240;
+    const w = Math.max(0, Math.min(1, ratio)) * this.bossBarW;
     this.bossHpBarFill.width = w;
     this.bossHpText.setText(`${formatNum(this.bossHp)} / ${formatNum(this.bossMaxHp)}`);
   }
