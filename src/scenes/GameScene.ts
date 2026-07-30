@@ -80,8 +80,15 @@ export class GameScene extends Phaser.Scene {
   private bossHpText: Phaser.GameObjects.Text | null = null;
   private bossBallTimer: Phaser.Time.TimerEvent | null = null;
   private bossBallTexture!: string;
-  /** boss 本体碰撞体（静态 sensor image），玩家球碰到才造成伤害 */
-  private bossBodyImg: Phaser.Physics.Matter.Image | null = null;
+  /** boss 本体半径（命中判定用，纯距离检测，不依赖 Matter 物理体） */
+  private bossRadius = 60;
+  /** boss 当前中心 x/y（随移动更新，命中检测用） */
+  private bossCx = 0;
+  private bossCy = 0;
+  /** boss 移动 tween */
+  private bossMoveTween: Phaser.Tweens.Tween | null = null;
+  /** boss 技能定时器 */
+  private bossSkillTimer: Phaser.Time.TimerEvent | null = null;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -558,17 +565,6 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 球 vs boss 本体（仅玩家球命中才造成伤害，boss 球忽略）
-    const bossBody = this.bossBodyImg?.body as MatterJS.Body | undefined;
-    if (aIsBall && bossBody && bodyB === bossBody) {
-      this.fireBallBossBody(bodyA);
-      return;
-    }
-    if (bIsBall && bossBody && bodyA === bossBody) {
-      this.fireBallBossBody(bodyB);
-      return;
-    }
-
     // 球 vs 墙
     if (aIsBall && this.wallLabels.has(bodyB)) {
       this.fireBallWall(bodyA);
@@ -620,13 +616,9 @@ export class GameScene extends Phaser.Scene {
     this.destroyBall(idx);
   }
 
-  /** 玩家球命中 boss 本体：造成等量伤害并销毁球 */
-  private fireBallBossBody(ballBody: MatterJS.Body) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sprite = (ballBody as any).gameObject as Phaser.Physics.Matter.Image | undefined;
-    if (!sprite) return;
-    const ball = this.ballBySprite.get(sprite);
-    if (!ball || ball.source === 'boss') return;   // boss 球不伤害本体
+  /** 玩家球命中 boss 本体：造成等量伤害并销毁球（纯距离检测触发） */
+  private fireBallBossBody(ball: Ball) {
+    if (ball.source === 'boss') return;   // boss 球不伤害本体
     // 命中本体 → 造成伤害 = 球数值（含贤者副本）
     let dmg = ball.value;
     if (ball.sageCopy > 0n) dmg = dmg + ball.sageCopy;
@@ -682,6 +674,19 @@ export class GameScene extends Phaser.Scene {
     // 同步球上数字文字到球的位置 + 检测停滞球
     for (const ball of this.balls) {
       ball.text.setPosition(ball.sprite.x, ball.sprite.y - 14);
+    }
+    // boss 战：玩家球与 boss 本体的距离命中检测（不依赖 Matter 物理体）
+    if (this.bossActive && this.bossSprite) {
+      const r = this.bossRadius + BALL_RADIUS;
+      for (let i = this.balls.length - 1; i >= 0; i--) {
+        const b = this.balls[i];
+        if (b.source === 'boss') continue;
+        const dx = b.sprite.x - this.bossCx;
+        const dy = b.sprite.y - this.bossCy;
+        if (dx * dx + dy * dy < r * r) {
+          this.fireBallBossBody(b);
+        }
+      }
     }
     // 清理落底弹珠 + 停滞球（速度过低且存在时间过长）
     for (let i = this.balls.length - 1; i >= 0; i--) {
@@ -1217,24 +1222,33 @@ export class GameScene extends Phaser.Scene {
     };
     this.bossBallTexture = bossTexMap[id];
 
-    const cx = this.gridX + (BALANCE.gridCols * BALANCE.cellSize) / 2;
-    // boss 本体放大到 144，下移让其位于底部结算区上方，成为玩家球的命中目标
+    const gridW = BALANCE.gridCols * BALANCE.cellSize;
+    const cx = this.gridX + gridW / 2;
+    // boss 本体放大到 144，位于底部结算区上方
     const bossSize = 144;
     const by = this.settleY + 70;
+    this.bossCx = cx;
+    this.bossCy = by;
 
-    // Boss 头像（底部中央）
-    this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(1);
-    // 本体 sensor：用 staticImage 确保静态，不受重力；sensor 仅检测碰撞不阻挡球
-    const bossMatter = this.matter.add.staticImage(cx, by, 'peg_placeholder', undefined);
-    bossMatter.setStatic(true);
-    bossMatter.setSensor(true);
-    bossMatter.setCircle(58);
-    (bossMatter.body as MatterJS.Body).label = 'boss_body';
-    bossMatter.setVisible(false);
-    bossMatter.setDisplaySize(1, 1);
-    this.bossBodyImg = bossMatter;
+    // Boss 头像（底部中央）—— 纯显示对象，不创建 Matter 物理体
+    // 命中判定用距离检测，避免 staticImage/sensor 的渲染与重力问题
+    this.bossSprite = this.add.image(cx, by, 'portrait_' + id)
+      .setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(1);
 
-    // Boss 名字 + HP 条（上移到本体上方，避免被本体遮挡；血条改细长）
+    // Boss 左右移动（章节越高移动越快、范围越大）
+    const moveRange = Math.min(gridW / 2 - bossSize / 2, 140);
+    const moveDur = id === 'boss_entropy' ? 1800 : id === 'boss_chameleon' ? 2200 : 2800;
+    this.bossMoveTween = this.tweens.add({
+      targets: this.bossSprite,
+      x: { from: cx - moveRange, to: cx + moveRange },
+      duration: moveDur,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+      onUpdate: () => { if (this.bossSprite) this.bossCx = this.bossSprite.x; },
+    });
+
+    // Boss 名字 + HP 条（跟随 boss 移动）
     this.bossNameText = this.add.text(cx, by - 96, info.name, {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '15px',
       color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
@@ -1248,13 +1262,44 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(8);
     this.updateBossHpDisplay();
 
-    // 定时生成 boss 球：章节越高频率越快（大幅强化）
+    // 名字/血条跟随 boss 移动
+    this.tweens.add({
+      targets: [this.bossNameText, this.bossHpBarBg, this.bossHpBarFill, this.bossHpText],
+      x: { from: cx - moveRange, to: cx + moveRange },
+      duration: moveDur, yoyo: true, repeat: -1, ease: 'Sine.inOut',
+    });
+
+    // 定时生成 boss 球：章节越高频率越快
     const interval = id === 'boss_frost' ? 3200 : id === 'boss_entropy' ? 1500 : 2200;
     this.bossBallTimer = this.time.addEvent({ delay: interval, loop: true, callback: this.spawnBossBall, callbackScope: this });
     // 立即先投一个
     this.spawnBossBall();
 
+    // 技能定时器：每隔一段时间释放技能（章节越高越频繁）
+    const skillInterval = id === 'boss_entropy' ? 8000 : id === 'boss_chameleon' ? 10000 : 12000;
+    this.bossSkillTimer = this.time.addEvent({ delay: skillInterval, loop: true, callback: this.bossSkill, callbackScope: this });
+
     this.hud.showToast(`${info.name} 现身！用弹珠击中它的本体才能造成伤害！`, 'prestige');
+  }
+
+  /** boss 技能：脉冲波 —— 清除场上所有玩家球（需重新投放）+ 连发多球 */
+  private bossSkill() {
+    if (!this.bossActive) return;
+    const info = this.bossId ? BOSS_INFO[this.bossId] : null;
+    // 脉冲波视觉效果
+    if (this.bossSprite && info) {
+      const wave = this.add.circle(this.bossCx, this.bossCy, 30, 0xff6b6b, 0)
+        .setStrokeStyle(3, 0xff6b6b, 0.8).setDepth(5);
+      this.tweens.add({
+        targets: wave, radius: 400, alpha: 0,
+        duration: 600, onComplete: () => wave.destroy(),
+      });
+      this.hud.showToast(`${info.name} 释放技能！`, 'prestige');
+    }
+    // 连发 3 个 boss 球
+    for (let i = 0; i < 3; i++) {
+      this.time.delayedCall(i * 200, () => this.spawnBossBall());
+    }
   }
 
   /** 按 boss 强度返回弹珠参数：越靠后章节，球越大、越快、数值越高、向上加速越强（大幅强化） */
@@ -1351,12 +1396,13 @@ export class GameScene extends Phaser.Scene {
     this.bossHp = 0n;
     this.bossMaxHp = 0n;
     if (this.bossBallTimer) { this.bossBallTimer.remove(); this.bossBallTimer = null; }
+    if (this.bossSkillTimer) { this.bossSkillTimer.remove(); this.bossSkillTimer = null; }
+    if (this.bossMoveTween) { this.bossMoveTween.stop(); this.bossMoveTween = null; }
     // 清除所有 boss 球
     for (let i = this.balls.length - 1; i >= 0; i--) {
       if (this.balls[i].source === 'boss') this.destroyBall(i);
     }
     this.bossSprite?.destroy(); this.bossSprite = null;
-    this.bossBodyImg?.destroy(); this.bossBodyImg = null;
     this.bossNameText?.destroy(); this.bossNameText = null;
     this.bossHpBarBg?.destroy(); this.bossHpBarBg = null;
     this.bossHpBarFill?.destroy(); this.bossHpBarFill = null;
