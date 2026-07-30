@@ -661,14 +661,12 @@ export class GameScene extends Phaser.Scene {
     let dmg = this.computeSettledGold(ball, GameState.currentComboMul());
     if (dmg <= 0n) return;
 
-    // 幻彩 boss：弱点元素弹珠造成全额伤害，非弱点/普通弹珠仅造成 20% 伤害（避免无法破防）
+    // 幻彩 boss：弱点元素弹珠额外 +200% 伤害（即 ×3），非弱点/普通弹珠造成全额伤害
     if (this.bossId === 'boss_chameleon' && this.bossWeakness) {
       const el = ball.marble?.element;
-      if (el !== this.bossWeakness) {
-        dmg = bigMulNum(dmg, 0.2);
-        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `弱点 ${this.weaknessLabel(this.bossWeakness)} 减伤`, 0x999999);
-      } else {
-        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `弱点命中！`, 0x56d364);
+      if (el === this.bossWeakness) {
+        dmg = bigMulNum(dmg, 3);
+        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `弱点命中 ×3`, 0x56d364);
       }
     }
 
