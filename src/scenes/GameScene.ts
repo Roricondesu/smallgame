@@ -104,6 +104,10 @@ export class GameScene extends Phaser.Scene {
   private bossFrostUntil = 0;
   /** 血条宽度（缩短后） */
   private readonly bossBarW = 160;
+  /** boss 背景圆盘（视觉锚点，确保 boss 位置可见） */
+  private bossBgDisk: Phaser.GameObjects.Arc | null = null;
+  /** boss 发光描边环 */
+  private bossGlowRing: Phaser.GameObjects.Arc | null = null;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -1250,15 +1254,44 @@ export class GameScene extends Phaser.Scene {
     this.bossCx = cx;
     this.bossCy = by;
 
-    // Boss 本体（使用程序化纹理，保证可见）—— 纯显示对象，不创建 Matter 物理体
+    // Boss 本体（立绘优先）—— 纯显示对象，不创建 Matter 物理体
     // 命中判定用距离检测，避免 staticImage/sensor 的渲染与重力问题
-    this.bossSprite = this.add.image(cx, by, info.tex)
-      .setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(1);
+    // 必须使用立绘图片；若立绘纹理未加载则用程序化纹理兜底，并打印警告便于排查
+    const portraitKey = 'portrait_' + id;
+    const hasPortrait = this.textures.exists(portraitKey);
+    const texKey = hasPortrait ? portraitKey : info.tex;
+    if (!hasPortrait) {
+      console.warn(`[Boss] portrait "${portraitKey}" 未加载，使用 fallback "${info.tex}"`);
+    }
+
+    // 背景圆盘（视觉锚点，确保 boss 位置可见）+ 发光描边环
+    const bgColors: Record<BossId, number> = {
+      boss_skull: 0x4a4f57, boss_frost: 0x6ec5ff, boss_ghost: 0x6b3fa0,
+      boss_chameleon: 0x3fb950, boss_entropy: 0x2a1530,
+    };
+    const glowColors: Record<BossId, number> = {
+      boss_skull: 0xff5555, boss_frost: 0xc8eeff, boss_ghost: 0xbc8cff,
+      boss_chameleon: 0x56d364, boss_entropy: 0xff6bff,
+    };
+    this.bossBgDisk = this.add.circle(cx, by, bossSize / 2 + 8, bgColors[id], 0.55).setDepth(5);
+    this.bossGlowRing = this.add.circle(cx, by, bossSize / 2 + 12, 0xffffff, 0)
+      .setStrokeStyle(4, glowColors[id], 0.95).setDepth(5);
+    // 发光环呼吸动画
+    this.tweens.add({
+      targets: this.bossGlowRing, alpha: { from: 0.6, to: 1 }, duration: 600, yoyo: true, repeat: -1,
+    });
+
+    // 立绘本体（depth 6 在圆盘之上）
+    this.bossSprite = this.add.image(cx, by, texKey)
+      .setDisplaySize(bossSize, bossSize).setOrigin(0.5).setDepth(6).setAlpha(1);
 
     // 入场动画：从下方弹入 + 闪一下确认可见
     this.bossSprite.setAlpha(0).setScale(0.4);
+    this.bossBgDisk.setAlpha(0).setScale(0.4);
+    this.bossGlowRing.setAlpha(0).setScale(0.4);
     this.tweens.add({
-      targets: this.bossSprite, alpha: 1, scale: 1, duration: 500, ease: 'Back.out',
+      targets: [this.bossSprite, this.bossBgDisk, this.bossGlowRing],
+      alpha: 1, scale: 1, duration: 500, ease: 'Back.out',
     });
 
     // Boss 左右移动（章节越高移动越快、范围越大）
@@ -1274,7 +1307,9 @@ export class GameScene extends Phaser.Scene {
       onUpdate: () => {
         if (this.bossSprite) {
           this.bossCx = this.bossSprite.x;
-          // 同步骨盾/弱点标记位置
+          // 同步背景圆盘/发光环/骨盾/弱点标记位置
+          if (this.bossBgDisk) this.bossBgDisk.setPosition(this.bossCx, this.bossCy);
+          if (this.bossGlowRing) this.bossGlowRing.setPosition(this.bossCx, this.bossCy);
           if (this.bossShieldRing) this.bossShieldRing.setPosition(this.bossCx, this.bossCy);
           if (this.bossWeaknessText) this.bossWeaknessText.setPosition(this.bossCx, this.bossCy + 50);
         }
