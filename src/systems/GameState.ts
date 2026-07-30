@@ -496,8 +496,11 @@ class GameStateClass {
   }
 
   checkChapterGoal() {
-    // 无尽模式：无目标金币、不触发任何章节进度剧情/归零
-    if (this._save.endlessMode) return;
+    // 无尽模式：检测 boss 阈值，每达到一个阈值触发一次 boss
+    if (this._save.endlessMode) {
+      this.checkEndlessBoss();
+      return;
+    }
     const ch = this.chapter;
     const progress = this._save.storyProgress;
 
@@ -534,6 +537,17 @@ class GameStateClass {
     bus.emit(EVT.PRESTIGE_AVAILABLE);
   }
 
+  /** 无尽模式 boss 阈值检测：totalGold 达到当前 tier 阈值时触发 boss */
+  private checkEndlessBoss() {
+    // 已触发但未击败 → 等待击败
+    if (this._save.storyProgress === 'endless_boss') return;
+    const threshold = this.currentEndlessThreshold;
+    if (this._save.totalGold >= threshold) {
+      this._save.storyProgress = 'endless_boss';
+      bus.emit(EVT.BOSS_TRIGGER, this.currentEndlessBossId);
+    }
+  }
+
   // 玩家主动关闭归零弹窗：保持 _ready 状态，不再重复弹
   dismissPrestigeModal() {
     // storyProgress 已是 _ready，无需改动；此方法留给 UI 明确语义
@@ -559,18 +573,72 @@ class GameStateClass {
 
   /** 当前章节是否已击败 Boss */
   isBossDefeated(): boolean {
+    // 无尽模式：boss 总是可触发（按 tier 推进）
+    if (this._save.endlessMode) return false;
     const id = this.currentBossId;
     if (!id) return true;
     return !!this._save.bossDefeated?.[id];
   }
 
-  /** 标记当前章节 Boss 已击败 */
+  /** 标记当前章节 Boss 已击败（无尽模式下推进 tier） */
   markBossDefeated() {
+    if (this._save.endlessMode) {
+      this._save.endlessBossTier = (this._save.endlessBossTier ?? 0) + 1;
+      this._save.storyProgress = 'endless'; // 重置，允许下一个阈值检测
+      bus.emit(EVT.BOSS_DEFEATED, this.currentEndlessBossId);
+      this.saveGame();
+      return;
+    }
     const id = this.currentBossId;
     if (!id) return;
     if (!this._save.bossDefeated) this._save.bossDefeated = {};
     this._save.bossDefeated[id] = true;
     bus.emit(EVT.BOSS_DEFEATED, id);
+  }
+
+  // ===== 无尽模式 Boss 阈值系统 =====
+  /** 无尽模式当前 tier（已击败的 boss 数量） */
+  get endlessBossTier(): number {
+    return this._save.endlessBossTier ?? 0;
+  }
+
+  /** 无尽模式第 tier 个 boss 的阈值（缩放值）
+   *  原值序列：10B, 100B, 1C, 10C, 100C, 1D, 10D, ...（每个 ×10）
+   *  原值 = 1e7 × 10^tier，缩放 ×100 → 1e9 × 10^tier */
+  endlessBossThreshold(tier: number): bigint {
+    if (tier < 0) return 0n;
+    // 1e9 缩放值（对应原值 1e7 = 10B）
+    let result = 1000000000n;
+    for (let i = 0; i < tier; i++) {
+      result *= 10n;
+      // 防止极端增长卡死（tier 很大时 BigInt 仍可处理，但避免无意义大数）
+    }
+    return result;
+  }
+
+  /** 无尽模式当前未击败 boss 的阈值 */
+  get currentEndlessThreshold(): bigint {
+    return this.endlessBossThreshold(this.endlessBossTier);
+  }
+
+  /** 无尽模式第 tier 个 boss（循环 5 个 boss） */
+  endlessBossIdAt(tier: number): 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy' {
+    const ids: Array<'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy'> =
+      ['boss_frost', 'boss_skull', 'boss_ghost', 'boss_chameleon', 'boss_entropy'];
+    return ids[tier % 5];
+  }
+
+  /** 无尽模式当前应出现的 boss */
+  get currentEndlessBossId(): 'boss_frost' | 'boss_skull' | 'boss_ghost' | 'boss_chameleon' | 'boss_entropy' {
+    return this.endlessBossIdAt(this.endlessBossTier);
+  }
+
+  /** Boss 最大 HP：章节模式 = targetGold/2，无尽模式 = 当前阈值/2 */
+  get bossMaxHpForCurrent(): bigint {
+    if (this._save.endlessMode) {
+      return this.currentEndlessThreshold / 2n;
+    }
+    return this.chapter.targetGold / 2n;
   }
 
   prestige(nextChapter: number) {
@@ -645,6 +713,7 @@ class GameStateClass {
   enterEndless() {
     if (!this._save.endlessUnlocked) return;
     this._save.endlessMode = true;
+    this._save.endlessBossTier = 0; // 重置 tier
     this._save.chapterId = 5; // 使用第 5 章背景
     this._save.pegs = [];
     this._save.autoDroppers = {};

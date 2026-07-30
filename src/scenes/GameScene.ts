@@ -1275,8 +1275,8 @@ export class GameScene extends Phaser.Scene {
     if (!info) return;
     this.bossActive = true;
     this.bossId = id;
-    // HP = 章节目标金币（与 targetGold 同量级，玩家需积累足量数值的弹珠才能击败）
-    this.bossMaxHp = GameState.chapter.targetGold;
+    // HP = 当前 boss 阈值的 50%（章节模式 = targetGold/2，无尽模式 = 当前 tier 阈值/2）
+    this.bossMaxHp = GameState.bossMaxHpForCurrent;
     this.bossHp = this.bossMaxHp;
     // 重置技能状态
     this.bossShield = 0n;

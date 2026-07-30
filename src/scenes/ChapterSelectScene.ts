@@ -83,17 +83,20 @@ export class ChapterSelectScene extends Phaser.Scene {
     // 无尽模式卡片
     const endlessCard = document.createElement('div');
     endlessCard.className = `chapter-card endless ${endlessUnlocked ? '' : 'locked'} ${endlessActive ? 'active' : ''}`;
+    const endlessTierText = endlessActive
+      ? `已击败 ${GameState.endlessBossTier} 个 Boss · 当前阈值 ${formatNum(GameState.currentEndlessThreshold)}`
+      : '每达到金币阈值触发 Boss（循环 5 位 Boss）';
     endlessCard.innerHTML = `
       <div class="chapter-card-head">
         <div class="chapter-no">无尽模式</div>
         <div class="chapter-name">永久挂机</div>
       </div>
       <div class="chapter-scene">${svgIcon('chapter', 12)} 无限回廊 · 贤者机器核心</div>
-      <div class="chapter-boss">${svgIcon('chapter', 12)} 无 Boss · 持续累积金币</div>
-      <div class="chapter-target">无目标金币上限</div>
+      <div class="chapter-boss">${svgIcon('chapter', 12)} 循环 Boss · 阈值递增</div>
+      <div class="chapter-target">${endlessTierText}</div>
       ${endlessUnlocked
         ? endlessActive
-          ? `<div class="chapter-active">进行中</div>`
+          ? `<button class="btn endless" data-endless="1">继续无尽</button>`
           : `<button class="btn endless" data-endless="1">进入无尽</button>`
         : `<div class="chapter-locked">通关 5 章后解锁</div>`}
     `;
@@ -119,7 +122,10 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private selectEndless() {
-    GameState.enterEndless();
+    // 已在无尽模式：直接进入游戏继续；否则新进入无尽
+    if (!GameState.endlessMode) {
+      GameState.enterEndless();
+    }
     this.hideChapterUI();
     this.scene.start('Game');
   }

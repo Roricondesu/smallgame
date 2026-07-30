@@ -48,6 +48,8 @@ export interface SaveData {
   endlessUnlocked?: boolean;
   // 是否处于无尽模式（无尽模式下无目标金币，持续挂机）
   endlessMode?: boolean;
+  // 无尽模式已击败的 boss 阶层（每达到一个阈值触发一次 boss，击败后 +1）
+  endlessBossTier?: number;
 }
 
 export interface PegConfig {

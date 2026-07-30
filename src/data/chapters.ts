@@ -3,26 +3,21 @@
 import type { ChapterConfig, AutoDropperConfig, CrystalUpgrade } from '../types';
 
 export const CHAPTERS: ChapterConfig[] = [
-  {
-    id: 1, name: '学徒之始', scene: '零号镇 · 北境小村',
-    targetGold: 100000000n, bg: 0x1a1025, accent: '#ff8c42',
-  },
-  {
-    id: 2, name: '符文觉醒', scene: '贤者遗迹 · 古老弹珠机废墟',
-    targetGold: 10000000000n, bg: 0x0a1a2a, accent: '#5ad1ff',
-  },
-  {
-    id: 3, name: '熵的预兆', scene: '金辉城 · 繁华都市',
-    targetGold: 1000000000000n, bg: 0x2a1a0a, accent: '#ffcc33',
-  },
-  {
-    id: 4, name: '归零之途', scene: '零之圣殿 · 极北圣地',
-    targetGold: 100000000000000n, bg: 0x101820, accent: '#ccccff',
-  },
-  {
-    id: 5, name: '贤者归来', scene: '无限回廊 · 贤者机器核心',
-    targetGold: 100000000000000000n, bg: 0x0a0a12, accent: '#aa88ff',
-  },
+  // targetGold 为缩放值（×100），原值 = 10B = 1e7
+  { id: 1, name: '学徒之始', scene: '零号镇 · 北境小村',
+    targetGold: 1000000000n, bg: 0x1a1025, accent: '#ff8c42' },
+  // 10D = 1e13
+  { id: 2, name: '符文觉醒', scene: '贤者遗迹 · 古老弹珠机废墟',
+    targetGold: 1000000000000000n, bg: 0x0a1a2a, accent: '#5ad1ff' },
+  // 10E = 1e16
+  { id: 3, name: '熵的预兆', scene: '金辉城 · 繁华都市',
+    targetGold: 1000000000000000000n, bg: 0x2a1a0a, accent: '#ffcc33' },
+  // 10G = 1e22
+  { id: 4, name: '归零之途', scene: '零之圣殿 · 极北圣地',
+    targetGold: 1000000000000000000000000n, bg: 0x101820, accent: '#ccccff' },
+  // 10I = 1e28
+  { id: 5, name: '贤者归来', scene: '无限回廊 · 贤者机器核心',
+    targetGold: 1000000000000000000000000000000n, bg: 0x0a0a12, accent: '#aa88ff' },
 ];
 
 export const CHAPTER_MAP: Record<number, ChapterConfig> = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));

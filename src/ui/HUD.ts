@@ -278,6 +278,30 @@ export class HUD {
       }
     }
 
+    // 无尽模式：显示当前 tier 阈值进度，boss 战中显示提示
+    if (GameState.endlessMode) {
+      const tier = GameState.endlessBossTier;
+      const threshold = GameState.currentEndlessThreshold;
+      const thresholdStr = formatNum(threshold);
+      const inBoss = prog === 'endless_boss';
+      const bossId = GameState.currentEndlessBossId;
+      const bossName = ({ boss_frost: '霜卫', boss_skull: '骷髅守卫', boss_ghost: '熵之幻影', boss_chameleon: '幻彩守卫', boss_entropy: '熵核' } as const)[bossId];
+      let tpct = 0;
+      if (threshold > 0n) {
+        if (total >= threshold) tpct = 100;
+        else {
+          const tn = fromBig(threshold);
+          tpct = isFinite(tn) && tn > 0 ? Math.min(99, (fromBig(total) / tn) * 100) : 0;
+        }
+      }
+      const title = `无尽模式 · 第 ${tier + 1} 阶`;
+      const body = inBoss ? `${bossName} 已现身！击败它解锁下一阶段` : `累积金币触发下一阶段 Boss`;
+      const goalText = inBoss ? `Boss 战中 · ${bossName}` : `累计 ${totalStr} / ${thresholdStr}`;
+      el.innerHTML = `<span class="task-title">${title}</span><span class="task-body">${body}</span><span class="task-goal">${goalText}</span><span class="task-prog">进度 ${tpct.toFixed(0)}%</span>`;
+      el.classList.add('show');
+      return;
+    }
+
     // 第 1 章教程阶段优先（tutorialStage 未到 done 时覆盖 storyProgress 提示）
     if (ch === 1 && tutorial !== 'done') {
       let title = '当前任务';
@@ -313,10 +337,15 @@ export class HUD {
     el.classList.add('show');
   }
 
-  /** Boss 战按钮显隐：仅当达到 90% 进度（剧情 _boss）且未击败时显示 */
+  /** Boss 战按钮显隐：仅当达到 90% 进度（剧情 _boss）且未击败时显示；无尽模式自动触发不显示按钮 */
   private updateBossButtonState() {
     const btn = document.getElementById('btn-boss');
     if (!btn) return;
+    // 无尽模式：boss 自动触发，无需按钮
+    if (GameState.endlessMode) {
+      btn.style.display = 'none';
+      return;
+    }
     const id = GameState.currentBossId;
     const triggered = !!id && GameState.save.storyProgress.endsWith('_boss');
     const shouldShow = triggered && !GameState.isBossDefeated();

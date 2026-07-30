@@ -192,6 +192,7 @@ export class SaveSystem {
     }
     if (merged.endlessUnlocked == null) merged.endlessUnlocked = false;
     if (merged.endlessMode == null) merged.endlessMode = false;
+    if (merged.endlessBossTier == null) merged.endlessBossTier = 0;
 
     // 迁移旧版弹珠（Record<string, number> 充次数 → Record<string, MarbleSave> 拥有+等级）
     // 旧版：每种弹珠每章自动补充，玩家可任意使用 → 视作全部已购买 1 级
