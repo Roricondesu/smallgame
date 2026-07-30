@@ -80,6 +80,8 @@ export class GameScene extends Phaser.Scene {
   private bossHpText: Phaser.GameObjects.Text | null = null;
   private bossBallTimer: Phaser.Time.TimerEvent | null = null;
   private bossBallTexture!: string;
+  /** boss 本体碰撞体（静态 sensor image），玩家球碰到才造成伤害 */
+  private bossBodyImg: Phaser.Physics.Matter.Image | null = null;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -543,6 +545,17 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // 球 vs boss 本体（仅玩家球命中才造成伤害，boss 球忽略）
+    const bossBody = this.bossBodyImg?.body as MatterJS.Body | undefined;
+    if (aIsBall && bossBody && bodyB === bossBody) {
+      this.fireBallBossBody(bodyA);
+      return;
+    }
+    if (bIsBall && bossBody && bodyA === bossBody) {
+      this.fireBallBossBody(bodyB);
+      return;
+    }
+
     // 球 vs 墙
     if (aIsBall && this.wallLabels.has(bodyB)) {
       this.fireBallWall(bodyA);
@@ -592,6 +605,24 @@ export class GameScene extends Phaser.Scene {
     const idx = this.balls.indexOf(ball);
     if (idx < 0) return;
     this.destroyBall(idx);
+  }
+
+  /** 玩家球命中 boss 本体：造成等量伤害并销毁球 */
+  private fireBallBossBody(ballBody: MatterJS.Body) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sprite = (ballBody as any).gameObject as Phaser.Physics.Matter.Image | undefined;
+    if (!sprite) return;
+    const ball = this.ballBySprite.get(sprite);
+    if (!ball || ball.source === 'boss') return;   // boss 球不伤害本体
+    // 命中本体 → 造成伤害 = 球数值（含贤者副本）
+    let dmg = ball.value;
+    if (ball.sageCopy > 0n) dmg = dmg + ball.sageCopy;
+    if (dmg <= 0n) return;
+    this.bossHp = this.bossHp > dmg ? this.bossHp - dmg : 0n;
+    this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `命中 -${formatNum(dmg)}`, 0xff6b6b);
+    this.updateBossHpDisplay();
+    this.destroyBallByRef(ball);
+    if (this.bossHp <= 0n) this.winSceneBoss();
   }
 
   private fireBallPeg(ballBody: MatterJS.Body, pegBody: MatterJS.Body) {
@@ -905,9 +936,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private settleBall(ball: Ball) {
-    // boss 战激活时：玩家弹珠落底改为对 boss 造成伤害，不再加金币
+    // boss 战激活时：未命中本体的玩家球落底后直接消失，不加金币、不造成伤害
     if (this.bossActive) {
-      this.attackBossWithBall(ball);
+      this.spawnFloatText(ball.sprite.x, ball.sprite.y - 14, '未命中', 0x7d8896);
       return;
     }
     // 判定边界与结算槽绘制保持一致：从 gridX 开始，宽度为网格宽度
@@ -1174,44 +1205,55 @@ export class GameScene extends Phaser.Scene {
     this.bossBallTexture = bossTexMap[id];
 
     const cx = this.gridX + (BALANCE.gridCols * BALANCE.cellSize) / 2;
-    const by = this.settleY + 30;
+    // boss 本体放大到 144，下移让其位于底部结算区上方，成为玩家球的命中目标
+    const bossSize = 144;
+    const by = this.settleY + 70;
 
-    // Boss 头像（底部中央，参与视觉，不参与物理）
-    this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(72, 72).setDepth(6).setAlpha(0.95);
-    // Boss 名字
-    this.bossNameText = this.add.text(cx, by - 52, info.name, {
-      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '14px',
+    // Boss 头像（底部中央）+ 本体静态 sensor 碰撞体（玩家球碰到才造成伤害）
+    this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(0.95);
+    // 本体 sensor：静态、不阻挡球，仅检测碰撞；半径略小于视觉以要求精准命中
+    const bossMatter = this.matter.add.image(cx, by, 'portrait_' + id, undefined, {
+      isStatic: true,
+      isSensor: true,
+      shape: { type: 'circle', radius: 58 },
+      label: 'boss_body',
+    });
+    bossMatter.setVisible(false);
+    this.bossBodyImg = bossMatter;
+
+    // Boss 名字 + HP 条（上移到本体上方，避免被本体遮挡）
+    this.bossNameText = this.add.text(cx, by - 96, info.name, {
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '15px',
       color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(7);
-    // HP 条
-    this.bossHpBarBg = this.add.rectangle(cx, by - 36, 200, 10, 0x000000, 0.5)
+    this.bossHpBarBg = this.add.rectangle(cx, by - 78, 220, 10, 0x000000, 0.5)
       .setStrokeStyle(1, 0xffffff, 0.3).setDepth(7);
-    this.bossHpBarFill = this.add.rectangle(cx - 100, by - 36, 200, 10, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
-    this.bossHpText = this.add.text(cx, by - 24, '', {
+    this.bossHpBarFill = this.add.rectangle(cx - 110, by - 78, 220, 10, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
+    this.bossHpText = this.add.text(cx, by - 64, '', {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '10px',
       color: '#ffcc66', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(8);
     this.updateBossHpDisplay();
 
-    // 定时生成 boss 球：章节越高频率越快
-    const interval = id === 'boss_frost' ? 4500 : id === 'boss_entropy' ? 2200 : 3000;
+    // 定时生成 boss 球：章节越高频率越快（大幅强化）
+    const interval = id === 'boss_frost' ? 3200 : id === 'boss_entropy' ? 1500 : 2200;
     this.bossBallTimer = this.time.addEvent({ delay: interval, loop: true, callback: this.spawnBossBall, callbackScope: this });
     // 立即先投一个
     this.spawnBossBall();
 
-    this.hud.showToast(`${info.name} 现身！拦截它的弹珠，别让它们冲到顶部！`, 'prestige');
+    this.hud.showToast(`${info.name} 现身！用弹珠击中它的本体才能造成伤害！`, 'prestige');
   }
 
-  /** 按 boss 强度返回弹珠参数：越靠后章节，球越大、越快、数值越高、向上加速越强 */
+  /** 按 boss 强度返回弹珠参数：越靠后章节，球越大、越快、数值越高、向上加速越强（大幅强化） */
   private bossBallConfig(): { valDivisor: bigint; speed: number; force: number; radius: number } {
     const ch = GameState.chapterId;
     switch (ch) {
-      case 1:  return { valDivisor: 40n, speed: 2.6, force: 0.4, radius: 8 };
-      case 2:  return { valDivisor: 30n, speed: 3.0, force: 0.5, radius: 9 };
-      case 3:  return { valDivisor: 25n, speed: 3.4, force: 0.6, radius: 9 };
-      case 4:  return { valDivisor: 20n, speed: 3.8, force: 0.7, radius: 10 };
-      case 5:  return { valDivisor: 15n, speed: 4.2, force: 0.8, radius: 11 };
-      default: return { valDivisor: 30n, speed: 3.0, force: 0.5, radius: 9 };
+      case 1:  return { valDivisor: 12n, speed: 3.8, force: 0.8, radius: 11 };
+      case 2:  return { valDivisor: 9n,  speed: 4.2, force: 0.95, radius: 12 };
+      case 3:  return { valDivisor: 7n,  speed: 4.8, force: 1.1, radius: 13 };
+      case 4:  return { valDivisor: 5n,  speed: 5.4, force: 1.3, radius: 14 };
+      case 5:  return { valDivisor: 4n,  speed: 6.2, force: 1.5, radius: 15 };
+      default: return { valDivisor: 9n,  speed: 4.2, force: 0.95, radius: 12 };
     }
   }
 
@@ -1223,8 +1265,10 @@ export class GameScene extends Phaser.Scene {
     const val = this.bossMaxHp / cfg.valDivisor || 1n;
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const cx = this.gridX + gridW / 2;
-    const spawnX = cx + Phaser.Math.Between(-gridW / 3, gridW / 3);
-    const spawnY = this.settleY + 20;
+    // 从 boss 本体两侧发射，避免与 boss sensor 本体重叠
+    const side = Phaser.Math.Between(0, 1) === 0 ? -1 : 1;
+    const spawnX = cx + side * Phaser.Math.Between(70, gridW / 3);
+    const spawnY = this.settleY + 70;
 
     const sprite = this.matter.add.image(spawnX, spawnY, this.bossBallTexture, undefined, {
       shape: { type: 'circle', radius: cfg.radius },
@@ -1258,23 +1302,6 @@ export class GameScene extends Phaser.Scene {
     const w = Math.max(0, Math.min(1, ratio)) * 200;
     this.bossHpBarFill.width = w;
     this.bossHpText.setText(`${formatNum(this.bossHp)} / ${formatNum(this.bossMaxHp)}`);
-  }
-
-  /** 玩家弹珠落底时攻击 boss：伤害 = ball.value（含中间槽加成） */
-  private attackBossWithBall(ball: Ball) {
-    if (!this.bossActive) return;
-    const gridW = BALANCE.gridCols * BALANCE.cellSize;
-    const slotW = gridW / BALANCE.bottomSlots;
-    const slotIdx = Math.min(BALANCE.bottomSlots - 1, Math.max(0, Math.floor((ball.sprite.x - this.gridX) / slotW)));
-    const isCenter = slotIdx === Math.floor(BALANCE.bottomSlots / 2);
-    const multiplier = isCenter ? 2 : 1;
-    let dmg = bigMulNum(ball.value, multiplier);
-    if (ball.sageCopy > 0n) dmg = dmg + bigMulNum(ball.sageCopy, multiplier);
-    if (dmg <= 0n) return;
-    this.bossHp = this.bossHp > dmg ? this.bossHp - dmg : 0n;
-    this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `-${formatNum(dmg)}`, 0xff6b6b);
-    this.updateBossHpDisplay();
-    if (this.bossHp <= 0n) this.winSceneBoss();
   }
 
   /** boss 球到达顶部：扣除等量金币，金币为 0 则失败 */
@@ -1316,6 +1343,7 @@ export class GameScene extends Phaser.Scene {
       if (this.balls[i].source === 'boss') this.destroyBall(i);
     }
     this.bossSprite?.destroy(); this.bossSprite = null;
+    this.bossBodyImg?.destroy(); this.bossBodyImg = null;
     this.bossNameText?.destroy(); this.bossNameText = null;
     this.bossHpBarBg?.destroy(); this.bossHpBarBg = null;
     this.bossHpBarFill?.destroy(); this.bossHpBarFill = null;
