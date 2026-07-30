@@ -703,6 +703,9 @@ class GameStateClass {
     this._save.chapterId = chapterId;
     this._save.endlessMode = false;
     this._save.storyProgress = `ch${chapterId}_intro`;
+    // 清除该章节的已看对话记录，使开场剧情重新播放
+    const prefix = `ch${chapterId}_`;
+    this._save.seenDialogues = (this._save.seenDialogues ?? []).filter(id => !id.startsWith(prefix));
     // 切换章节视为新周目：重置 Boss 击败记录与 pegs
     this._save.pegs = [];
     this._save.autoDroppers = {};
