@@ -182,29 +182,16 @@ export class MenuScene extends Phaser.Scene {
       (link as HTMLElement).dataset.bound = '1';
       link.addEventListener('click', () => {
         const act = (link as HTMLElement).dataset.menu;
-        if (act === 'start') this.handleStart();
-        else if (act === 'chapters') this.openChapterSelect();
+        if (act === 'start') this.openChapterSelect();
         else if (act === 'slots') this.showSlotPicker();
         else if (act === 'shop') this.showCrystalShop();
         else if (act === 'codex') this.showCodex();
         else if (act === 'settings') this.showSettings();
-        else if (act === 'about') this.showAbout();
       });
     });
   }
 
-  /** 开始游戏：当前槽位若已有存档则直接继续，否则进入选择存档 */
-  private handleStart() {
-    const meta = SaveSystem.getSlotMeta(GameState.slot);
-    if (meta.exists) {
-      GameState.loadSlot(GameState.slot);
-      this.scene.start('OfflineReport');
-    } else {
-      this.showSlotPicker();
-    }
-  }
-
-  /** 进入章节选择场景 */
+  /** 进入章节选择场景（开始游戏入口，含存档选择与章节/无尽入口） */
   private openChapterSelect() {
     this.hideMenuUI();
     this.scene.start('ChapterSelect');
@@ -426,6 +413,12 @@ export class MenuScene extends Phaser.Scene {
           </div>
           <input type="file" id="settings-import-file" accept=".json" style="display:none">
           <p class="muted settings-hint">游戏数据保存在本地浏览器，清除浏览器缓存将丢失存档。建议定期导出备份。</p>
+          <div class="settings-section">
+            <h4 style="margin:0 0 6px; color:#f0b429; font-size:13px; font-weight:600;">关于</h4>
+            <p style="margin:0 0 4px; font-size:13px;">弹珠炼金术 · Pinball Alchemy</p>
+            <p class="muted" style="margin:0 0 4px; font-size:12px;">像素风物理弹珠挂机游戏。投放弹珠穿过钉子阵列，通过加减乘除等运算累积金币，归零进入下一周目获取数晶强化永久加成。通关 5 章后解锁无尽模式。</p>
+            <p class="muted" style="margin:0; font-size:11px;">v1.4.0 · 3 槽位存档</p>
+          </div>
           <div class="modal-actions"><button id="menu-settings-close" class="btn">关闭</button></div>
         </div>
       `;
@@ -801,31 +794,5 @@ export class MenuScene extends Phaser.Scene {
     `;
   }
 
-  // ===== 关于 =====
-  private showAbout() {
-    let overlay = document.getElementById('menu-about-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'menu-about-overlay';
-      overlay.className = 'modal-overlay';
-      overlay.innerHTML = `
-        <div class="modal" style="width:min(440px,92vw)">
-          <h3>关于</h3>
-          <p>弹珠炼金术 · Pinball Alchemy</p>
-          <p class="muted">像素风物理弹珠挂机游戏。投放弹珠穿过钉子阵列，通过加减乘除等运算累积金币，归零进入下一周目获取数晶强化永久加成。</p>
-          <p class="muted">v1.4.0 · 3 槽位存档</p>
-          <div class="modal-actions">
-            <button id="menu-about-close" class="btn">关闭</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(overlay);
-      const ov = overlay;
-      document.getElementById('menu-about-close')!.addEventListener('click', () => ov.classList.remove('open'));
-      ov.addEventListener('click', (e) => {
-        if (e.target === ov) ov.classList.remove('open');
-      });
-    }
-    overlay.classList.add('open');
-  }
+  // 关于内容已合并至设置弹窗底部
 }
