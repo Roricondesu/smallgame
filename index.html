@@ -30,9 +30,9 @@
       /* 像素风：硬边阶梯阴影（offset 无 blur），模拟复古游戏机投影 */
       --shadow: 4px 4px 0 rgba(0, 0, 0, 0.65);
       --shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.5);
-      /* 像素风：无圆角 */
-      --radius: 0px;
-      --radius-sm: 0px;
+      /* 像素风：阶梯式圆角（保持方块感但角部留像素切角） */
+      --radius: 4px;
+      --radius-sm: 2px;
       /* 像素风：边框高光色（内边框） */
       --pixel-border: #ffffff;
       --pixel-border-dim: rgba(255, 255, 255, 0.18);
@@ -1030,6 +1030,16 @@
         min-height: 44px;
       }
 
+      /* 小屏像素风适配：缩小阴影防溢出，圆角更紧凑 */
+      .modal { box-shadow: 2px 2px 0 rgba(0,0,0,0.65), inset 0 0 0 1px var(--pixel-border-dim); }
+      .btn { box-shadow: 1px 1px 0 rgba(0,0,0,0.5); }
+      .btn:active { transform: translate(1px, 1px); box-shadow: none; }
+      .icon-btn { box-shadow: 1px 1px 0 rgba(0,0,0,0.5), inset 0 0 0 1px var(--pixel-border-dim); }
+      .icon-btn:active { transform: translate(1px, 1px); box-shadow: none; }
+      .stat-chip { box-shadow: 1px 1px 0 rgba(0,0,0,0.5), inset 0 0 0 1px var(--pixel-border-dim); }
+      .settings-action { box-shadow: 1px 1px 0 rgba(0,0,0,0.5), inset 0 0 0 1px var(--pixel-border-dim); }
+      .settings-action:active { transform: translate(1px, 1px); box-shadow: none; }
+
       /* 存档卡片触控优化 */
       .slot-card { padding: 14px; }
       .slot-card-actions .btn {
@@ -1066,6 +1076,9 @@
       .item-desc { font-size: 11px; }
       .mini-btn { padding: 8px 4px; font-size: 11px; min-height: 36px; }
       .tab-btn { padding: 8px 2px; font-size: 11px; }
+      /* 极小屏：阴影进一步缩小避免拥挤 */
+      .stat-chip, .icon-btn, .btn { box-shadow: 1px 1px 0 rgba(0,0,0,0.5), inset 0 0 0 1px var(--pixel-border-dim); }
+      .stat-chip:active, .icon-btn:active, .btn:active { transform: translate(1px, 1px); box-shadow: none; }
     }
     /* 横屏短屏：抽屉高度更小，但仍可滚动 */
     @media (max-height: 500px) and (orientation: landscape) {
@@ -1390,7 +1403,9 @@
     }
     .chapter-card .btn.endless:hover { filter: brightness(1.15); }
     @media (max-width: 768px) {
-      .chapter-select-list { grid-template-columns: 1fr; }
+      .chapter-select-list { grid-template-columns: 1fr; gap: 10px; }
+      /* 章节卡片小屏压缩高度，圆角更小 */
+      .chapter-card { min-height: 0; padding: 14px; border-radius: var(--radius-sm); }
     }
   </style>
 </head>
