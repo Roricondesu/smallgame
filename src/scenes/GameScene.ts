@@ -82,6 +82,8 @@ export class GameScene extends Phaser.Scene {
   private bossBallTexture!: string;
   /** boss 本体碰撞体（静态 sensor image），玩家球碰到才造成伤害 */
   private bossBodyImg: Phaser.Physics.Matter.Image | null = null;
+  /** boss 底座圆盘（立绘背景，确保暗背景下可见） */
+  private bossBase: Phaser.GameObjects.Arc | null = null;
   private placementMode: { typeId: string | null } = { typeId: null };
   private settleSlots: Phaser.GameObjects.Rectangle[] = [];
   private settleTexts: Phaser.GameObjects.Text[] = [];
@@ -1226,8 +1228,12 @@ export class GameScene extends Phaser.Scene {
     const bossSize = 144;
     const by = this.settleY + 70;
 
+    // Boss 底座圆盘：确保立绘在暗背景下可见，并标示本体命中范围
+    this.bossBase = this.add.circle(cx, by, bossSize / 2 + 6, 0x1a0d0d, 0.85)
+      .setStrokeStyle(3, 0xff6b6b, 0.7).setDepth(5);
+
     // Boss 头像（底部中央）+ 本体静态 sensor 碰撞体（玩家球碰到才造成伤害）
-    this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(0.95);
+    this.bossSprite = this.add.image(cx, by, 'portrait_' + id).setDisplaySize(bossSize, bossSize).setDepth(6).setAlpha(1);
     // 本体 sensor：静态、不阻挡球，仅检测碰撞；半径略小于视觉以要求精准命中
     const bossMatter = this.matter.add.image(cx, by, 'portrait_' + id, undefined, {
       isStatic: true,
@@ -1238,16 +1244,16 @@ export class GameScene extends Phaser.Scene {
     bossMatter.setVisible(false);
     this.bossBodyImg = bossMatter;
 
-    // Boss 名字 + HP 条（上移到本体上方，避免被本体遮挡）
+    // Boss 名字 + HP 条（上移到本体上方，避免被本体遮挡；血条改细长）
     this.bossNameText = this.add.text(cx, by - 96, info.name, {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '15px',
       color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(7);
-    this.bossHpBarBg = this.add.rectangle(cx, by - 78, 220, 10, 0x000000, 0.5)
+    this.bossHpBarBg = this.add.rectangle(cx, by - 78, 240, 5, 0x000000, 0.6)
       .setStrokeStyle(1, 0xffffff, 0.3).setDepth(7);
-    this.bossHpBarFill = this.add.rectangle(cx - 110, by - 78, 220, 10, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
-    this.bossHpText = this.add.text(cx, by - 64, '', {
-      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '10px',
+    this.bossHpBarFill = this.add.rectangle(cx - 120, by - 78, 240, 5, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
+    this.bossHpText = this.add.text(cx, by - 66, '', {
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '9px',
       color: '#ffcc66', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(8);
     this.updateBossHpDisplay();
@@ -1316,7 +1322,7 @@ export class GameScene extends Phaser.Scene {
   private updateBossHpDisplay() {
     if (!this.bossHpBarFill || !this.bossHpText || this.bossMaxHp <= 0n) return;
     const ratio = Number(Number(this.bossHp * 10000n / this.bossMaxHp) / 10000);
-    const w = Math.max(0, Math.min(1, ratio)) * 200;
+    const w = Math.max(0, Math.min(1, ratio)) * 240;
     this.bossHpBarFill.width = w;
     this.bossHpText.setText(`${formatNum(this.bossHp)} / ${formatNum(this.bossMaxHp)}`);
   }
@@ -1361,6 +1367,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.bossSprite?.destroy(); this.bossSprite = null;
     this.bossBodyImg?.destroy(); this.bossBodyImg = null;
+    this.bossBase?.destroy(); this.bossBase = null;
     this.bossNameText?.destroy(); this.bossNameText = null;
     this.bossHpBarBg?.destroy(); this.bossHpBarBg = null;
     this.bossHpBarFill?.destroy(); this.bossHpBarFill = null;
