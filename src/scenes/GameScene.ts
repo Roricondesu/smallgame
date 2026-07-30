@@ -75,8 +75,8 @@ export class GameScene extends Phaser.Scene {
   private bossMaxHp: bigint = 0n;
   private bossSprite: Phaser.GameObjects.Image | null = null;
   private bossNameText: Phaser.GameObjects.Text | null = null;
-  private bossHpBarBg: Phaser.GameObjects.Rectangle | null = null;
-  private bossHpBarFill: Phaser.GameObjects.Rectangle | null = null;
+  /** boss 弧形血环（与圆环融合的 Graphics，重绘于 updateBossHpDisplay） */
+  private bossHpArc: Phaser.GameObjects.Graphics | null = null;
   private bossHpText: Phaser.GameObjects.Text | null = null;
   private bossBallTimer: Phaser.Time.TimerEvent | null = null;
   private bossBallTexture!: string;
@@ -102,8 +102,6 @@ export class GameScene extends Phaser.Scene {
   private bossWeaknessText: Phaser.GameObjects.Text | null = null;
   /** 霜卫 boss：冰冻结束时间戳，期间玩家球减速 */
   private bossFrostUntil = 0;
-  /** 血条宽度（缩短后） */
-  private readonly bossBarW = 160;
   /** boss 背景圆盘（视觉锚点，确保 boss 位置可见） */
   private bossBgDisk: Phaser.GameObjects.Arc | null = null;
   /** boss 发光描边环 */
@@ -635,13 +633,54 @@ export class GameScene extends Phaser.Scene {
     this.destroyBall(idx);
   }
 
-  /** 玩家球命中 boss 本体：造成等量伤害并销毁球（纯距离检测触发） */
+  /** 玩家球命中 boss 本体：接入技能机制（盾/相位/变色）后结算伤害 */
   private fireBallBossBody(ball: Ball) {
     if (ball.source === 'boss') return;   // boss 球不伤害本体
+    // 幻影 boss：相位偏移期间无法被命中
+    if (this.bossId === 'boss_ghost' && Date.now() < this.bossPhaseUntil) {
+      this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, '相位 miss', 0xbc8cff);
+      this.destroyBallByRef(ball);
+      return;
+    }
+    // 幻彩 boss：仅弱点元素弹珠可造成伤害
+    if (this.bossId === 'boss_chameleon' && this.bossWeakness) {
+      const el = ball.marble?.element;
+      if (el !== this.bossWeakness) {
+        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `弱点 ${this.weaknessLabel(this.bossWeakness)} miss`, 0x999999);
+        this.destroyBallByRef(ball);
+        return;
+      }
+    }
     // 命中本体 → 造成伤害 = 球数值（含贤者副本）
     let dmg = ball.value;
     if (ball.sageCopy > 0n) dmg = dmg + ball.sageCopy;
     if (dmg <= 0n) return;
+
+    // 骷髅 boss：骨盾优先吸收伤害
+    if (this.bossId === 'boss_skull' && this.bossShield > 0n) {
+      if (this.bossShield >= dmg) {
+        // 盾吸收全部
+        this.bossShield -= dmg;
+        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `盾 -${formatNum(dmg)}`, 0xeeeeee);
+        this.destroyBallByRef(ball);
+        // 盾耗尽 → 销毁盾环
+        if (this.bossShield <= 0n) {
+          this.bossShield = 0n;
+          this.bossShieldRing?.destroy();
+          this.bossShieldRing = null;
+          this.spawnFloatText(this.bossCx, this.bossCy - 40, '骨盾碎裂！', 0xff6b6b);
+        }
+        return;
+      } else {
+        // 盾不足，溢出伤害打血条
+        dmg -= this.bossShield;
+        this.bossShield = 0n;
+        this.bossShieldRing?.destroy();
+        this.bossShieldRing = null;
+        this.spawnFloatText(this.bossCx, this.bossCy - 40, '骨盾碎裂！', 0xff6b6b);
+      }
+    }
+
     this.bossHp = this.bossHp > dmg ? this.bossHp - dmg : 0n;
     this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `命中 -${formatNum(dmg)}`, 0xff6b6b);
     this.updateBossHpDisplay();
@@ -697,9 +736,15 @@ export class GameScene extends Phaser.Scene {
     // boss 战：玩家球与 boss 本体的距离命中检测（不依赖 Matter 物理体）
     if (this.bossActive && this.bossSprite) {
       const r = this.bossRadius + BALL_RADIUS;
+      const frozen = Date.now() < this.bossFrostUntil;
       for (let i = this.balls.length - 1; i >= 0; i--) {
         const b = this.balls[i];
         if (b.source === 'boss') continue;
+        // 霜卫冰冻：玩家球持续减速（仅向下重力方向）
+        if (frozen) {
+          const v = b.sprite.body?.velocity;
+          if (v && v.y > 0) b.sprite.setVelocityY(v.y * 0.92);
+        }
         const dx = b.sprite.x - this.bossCx;
         const dy = b.sprite.y - this.bossCy;
         if (dx * dx + dy * dy < r * r) {
@@ -1312,28 +1357,28 @@ export class GameScene extends Phaser.Scene {
           if (this.bossGlowRing) this.bossGlowRing.setPosition(this.bossCx, this.bossCy);
           if (this.bossShieldRing) this.bossShieldRing.setPosition(this.bossCx, this.bossCy);
           if (this.bossWeaknessText) this.bossWeaknessText.setPosition(this.bossCx, this.bossCy + 50);
+          // 重绘弧形血环到新位置
+          this.drawBossHpArc();
         }
       },
     });
 
-    // Boss 名字 + HP 条（跟随 boss 移动）
-    const bw = this.bossBarW;
+    // Boss 名字 + HP 数值文字（弧形血环在圆环外侧绘制，无需独立矩形条）
     this.bossNameText = this.add.text(cx, by - 84, info.name, {
       fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '15px',
       color: '#ff6b6b', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(7);
-    this.bossHpBarBg = this.add.rectangle(cx, by - 66, bw, 5, 0x000000, 0.6)
-      .setStrokeStyle(1, 0xffffff, 0.3).setDepth(7);
-    this.bossHpBarFill = this.add.rectangle(cx - bw / 2, by - 66, bw, 5, 0xff6b6b).setOrigin(0, 0.5).setDepth(8);
-    this.bossHpText = this.add.text(cx, by - 54, '', {
-      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '9px',
+    // 弧形血环 Graphics（融合于圆环外侧）
+    this.bossHpArc = this.add.graphics().setDepth(8);
+    this.bossHpText = this.add.text(cx, by + 64, '', {
+      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '10px',
       color: '#ffcc66', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(8);
     this.updateBossHpDisplay();
 
-    // 名字/血条跟随 boss 移动
+    // 名字/血量文字跟随 boss 移动（血环 Graphics 在 onUpdate 中整体重绘定位）
     this.tweens.add({
-      targets: [this.bossNameText, this.bossHpBarBg, this.bossHpBarFill, this.bossHpText],
+      targets: [this.bossNameText, this.bossHpText],
       x: { from: cx - moveRange, to: cx + moveRange },
       duration: moveDur, yoyo: true, repeat: -1, ease: 'Sine.inOut',
     });
@@ -1507,13 +1552,52 @@ export class GameScene extends Phaser.Scene {
     this.ballBySprite.set(sprite, ball);
   }
 
-  /** 更新 Boss HP 条显示 */
+  /** 更新 Boss HP 显示：重绘弧形血环 + 数值文字 */
   private updateBossHpDisplay() {
-    if (!this.bossHpBarFill || !this.bossHpText || this.bossMaxHp <= 0n) return;
-    const ratio = Number(Number(this.bossHp * 10000n / this.bossMaxHp) / 10000);
-    const w = Math.max(0, Math.min(1, ratio)) * this.bossBarW;
-    this.bossHpBarFill.width = w;
+    if (!this.bossHpText || this.bossMaxHp <= 0n) return;
     this.bossHpText.setText(`${formatNum(this.bossHp)} / ${formatNum(this.bossMaxHp)}`);
+    this.drawBossHpArc();
+  }
+
+  /** 绘制弧形血环：以 boss 圆心为圆心，半径略大于发光环，从顶部顺时针扫过 ratio*270°
+   *  背景整圈淡色 + 前景红色弧线，与圆环视觉融合 */
+  private drawBossHpArc() {
+    const g = this.bossHpArc;
+    if (!g) return;
+    g.clear();
+    const cx = this.bossCx, cy = this.bossCy;
+    // 弧形半径：略大于发光环（bossSize/2 + 12），让血环贴在发光环外侧
+    const r = 132 / 2 + 18; // = 84
+    // 扫描角度范围：270° 留出底部缺口，避免与名字/血量文字重叠
+    const SPAN = Math.PI * 1.5; // 270°
+    const startA = -Math.PI / 2 - SPAN / 2; // 从顶部偏左开始
+    // ratio
+    let ratio = 0;
+    if (this.bossMaxHp > 0n) {
+      ratio = Math.max(0, Math.min(1, Number(Number(this.bossHp * 10000n / this.bossMaxHp) / 10000)));
+    }
+    const endA = startA + SPAN * ratio;
+
+    // 背景整圈淡色描边（缺口段用更暗的色）
+    g.lineStyle(5, 0x000000, 0.45);
+    g.beginPath();
+    g.arc(cx, cy, r, startA, startA + SPAN, false);
+    g.strokePath();
+    // 前景血量弧（红色，满血亮，低血偏暗）
+    const hpColor = ratio > 0.5 ? 0xff6b6b : ratio > 0.25 ? 0xff8b3d : 0xff4444;
+    g.lineStyle(5, hpColor, 1);
+    g.beginPath();
+    g.arc(cx, cy, r, startA, endA, false);
+    g.strokePath();
+    // 起止端点小圆点，让血环更"封口"
+    const ex = cx + Math.cos(endA) * r;
+    const ey = cy + Math.sin(endA) * r;
+    g.fillStyle(hpColor, 1);
+    g.fillCircle(ex, ey, 3.5);
+    const sx = cx + Math.cos(startA) * r;
+    const sy = cy + Math.sin(startA) * r;
+    g.fillStyle(0x000000, 0.6);
+    g.fillCircle(sx, sy, 3);
   }
 
   /** boss 球到达顶部：扣除等量金币，金币为 0 则失败 */
@@ -1558,8 +1642,11 @@ export class GameScene extends Phaser.Scene {
     }
     this.bossSprite?.destroy(); this.bossSprite = null;
     this.bossNameText?.destroy(); this.bossNameText = null;
-    this.bossHpBarBg?.destroy(); this.bossHpBarBg = null;
-    this.bossHpBarFill?.destroy(); this.bossHpBarFill = null;
+    this.bossHpArc?.destroy(); this.bossHpArc = null;
     this.bossHpText?.destroy(); this.bossHpText = null;
+    this.bossBgDisk?.destroy(); this.bossBgDisk = null;
+    this.bossGlowRing?.destroy(); this.bossGlowRing = null;
+    this.bossShieldRing?.destroy(); this.bossShieldRing = null;
+    this.bossWeaknessText?.destroy(); this.bossWeaknessText = null;
   }
 }
