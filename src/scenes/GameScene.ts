@@ -657,18 +657,20 @@ export class GameScene extends Phaser.Scene {
       this.destroyBallByRef(ball);
       return;
     }
-    // 幻彩 boss：仅弱点元素弹珠可造成伤害
-    if (this.bossId === 'boss_chameleon' && this.bossWeakness) {
-      const el = ball.marble?.element;
-      if (el !== this.bossWeakness) {
-        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 20, `弱点 ${this.weaknessLabel(this.bossWeakness)} miss`, 0x999999);
-        this.destroyBallByRef(ball);
-        return;
-      }
-    }
     // 命中本体 → 造成伤害 = 下落后最终结算数值（含槽位/贤者副本/元素弹珠/连击等直接加成）
     let dmg = this.computeSettledGold(ball, GameState.currentComboMul());
     if (dmg <= 0n) return;
+
+    // 幻彩 boss：弱点元素弹珠造成全额伤害，非弱点/普通弹珠仅造成 20% 伤害（避免无法破防）
+    if (this.bossId === 'boss_chameleon' && this.bossWeakness) {
+      const el = ball.marble?.element;
+      if (el !== this.bossWeakness) {
+        dmg = bigMulNum(dmg, 0.2);
+        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `弱点 ${this.weaknessLabel(this.bossWeakness)} 减伤`, 0x999999);
+      } else {
+        this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `弱点命中！`, 0x56d364);
+      }
+    }
 
     // 骷髅 boss：骨盾优先吸收伤害
     if (this.bossId === 'boss_skull' && this.bossShield > 0n) {
