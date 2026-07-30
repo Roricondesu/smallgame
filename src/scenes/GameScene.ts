@@ -108,6 +108,8 @@ export class GameScene extends Phaser.Scene {
   private ballWallCooldown = new WeakMap<Ball, number>();
   // 毒蚀钉子的临时增益：pegId -> 过期时间戳
   private poisonedPegBuffs = new Map<string, number>();
+  // bus 事件回调引用（shutdown 时统一 off，防止场景重启后残留监听引用旧场景导致卡死）
+  private busCbs: Array<{ event: string; cb: (...args: unknown[]) => void }> = [];
 
   // 布局相关引用（resize 时需重新定位的元素）
   private gridBg!: Phaser.GameObjects.Graphics;
@@ -279,8 +281,8 @@ export class GameScene extends Phaser.Scene {
       GameState.setDevGoldMul(mul > 0 ? mul : 0);
     }
 
-    // 事件监听
-    bus.on(EVT.ACTIVE_TRIGGERED, (payload: unknown) => {
+    // 事件监听：用 onBus 绑定，shutdown 时统一 off，防止场景重启后残留监听引用旧场景导致卡死
+    this.onBus(EVT.ACTIVE_TRIGGERED, (payload: unknown) => {
       const p = payload as { skillId: string; duration: number };
       if (p.skillId === 'frenzy' || p.skillId === 'rhythm') {
         this.tweens.add({ targets: this.frenzyOverlay, alpha: 0.12, duration: 200 });
@@ -290,7 +292,7 @@ export class GameScene extends Phaser.Scene {
         this.executeBlast();
       }
     });
-    bus.on(EVT.ACTIVE_EXPIRED, (skillId: unknown) => {
+    this.onBus(EVT.ACTIVE_EXPIRED, (skillId: unknown) => {
       const id = String(skillId);
       if (id === 'frenzy' || id === 'rhythm') {
         this.tweens.add({ targets: this.frenzyOverlay, alpha: 0, duration: 200 });
@@ -298,8 +300,8 @@ export class GameScene extends Phaser.Scene {
         this.matter.world.engine.timing.timeScale = 1;
       }
     });
-    bus.on(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleCodex?.());
-    bus.on(EVT.MARBLE_BOUGHT, () => {
+    this.onBus(EVT.MARBLE_SELECTED, () => this.hud.refreshMarbleCodex?.());
+    this.onBus(EVT.MARBLE_BOUGHT, () => {
       this.hud.refreshMarbleCodex?.();
       // 教程：首次购买弹珠后完成弹珠教程
       if (this.tutorialStage === 'marbles') {
@@ -307,25 +309,25 @@ export class GameScene extends Phaser.Scene {
         this.notifyTaskHint();
       }
     });
-    bus.on(EVT.MARBLE_UPGRADED, () => this.hud.refreshMarbleCodex?.());
-    bus.on(EVT.PRESTIGE_AVAILABLE, () => {
+    this.onBus(EVT.MARBLE_UPGRADED, () => this.hud.refreshMarbleCodex?.());
+    this.onBus(EVT.PRESTIGE_AVAILABLE, () => {
       // 各章首次达到归零条件时，播放对应归零剧情对话
       this.tryPlayDialogue(chapterPrestigeReadyId(GameState.chapterId));
     });
-    bus.on(EVT.BOSS_DEFEATED, () => {
+    this.onBus(EVT.BOSS_DEFEATED, () => {
       // Boss 击败后重新检查章节进度，可能立即触发归零就绪
       GameState.saveGame();
       this.hud.showToast('Boss 已击败！归零之路已开', 'prestige');
       GameState.recheckChapterGoal();
     });
     // 场景内 Boss 战：BOSS_TRIGGER 触发时启动场景战斗
-    bus.on(EVT.BOSS_TRIGGER, (id: unknown) => {
+    this.onBus(EVT.BOSS_TRIGGER, (id: unknown) => {
       const bossId = id as BossId;
       if (!bossId || GameState.isBossDefeated()) return;
       if (this.bossActive) return;
       this.startSceneBoss(bossId);
     });
-    bus.on(EVT.MILESTONE_REACHED, (payload: unknown) => {
+    this.onBus(EVT.MILESTONE_REACHED, (payload: unknown) => {
       const p = payload as { type: string; chapter: number };
       if (p.type === 'midpoint') {
         this.tryPlayDialogue(chapterMidpointId(p.chapter));
@@ -333,7 +335,7 @@ export class GameScene extends Phaser.Scene {
         this.tryPlayDialogue('ch4_revelation');
       }
     });
-    bus.on(EVT.CHAPTER_CHANGED, () => {
+    this.onBus(EVT.CHAPTER_CHANGED, () => {
       // 切换章节背景（重新应用 30% 变暗 tint 以防被清除）
       this.bgImage.setTexture(`bg_ch${GameState.chapterId}`);
       this.bgImage.setTint(0xb2b2b2);
@@ -356,6 +358,11 @@ export class GameScene extends Phaser.Scene {
 
     this.events.on('shutdown', () => {
       GameState.saveGame();
+      // 清理 bus 监听，避免场景重启后旧回调引用已销毁的场景对象导致卡死
+      for (const { event, cb } of this.busCbs) bus.off(event, cb);
+      this.busCbs = [];
+      // 复原时间缩放，防止上一场战斗的 slowdown 残留
+      this.matter.world.engine.timing.timeScale = 1;
       this.hud.unmount();
       this.dialogue?.unmount();
       this.bossDialogue?.unmount();
@@ -363,6 +370,12 @@ export class GameScene extends Phaser.Scene {
       this.scale.off('resize', this.onResize, this);
     });
     this.events.on('pause', () => GameState.saveGame());
+  }
+
+  /** 绑定 bus 事件并记录回调，便于 shutdown 时统一注销 */
+  private onBus(event: string, cb: (...args: unknown[]) => void) {
+    this.busCbs.push({ event, cb });
+    bus.on(event, cb);
   }
 
   /** 章节开场对话：未看过则播放；并初始化教程状态机 */
@@ -662,8 +675,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    // 对话进行时游戏放慢 10 倍，确保玩家看完剧情
-    this.time.timeScale = this.dialogue?.isPlaying() ? 0.1 : 1;
+    // 对话进行时游戏放慢 10 倍（Phaser 时钟 + Matter.js 物理同步降速），确保玩家看完剧情
+    const slow = this.dialogue?.isPlaying() ? 0.1 : 1;
+    this.time.timeScale = slow;
+    this.matter.world.engine.timing.timeScale = slow;
     // 同步球上数字文字到球的位置 + 检测停滞球
     for (const ball of this.balls) {
       ball.text.setPosition(ball.sprite.x, ball.sprite.y - 14);
