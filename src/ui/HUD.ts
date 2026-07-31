@@ -21,8 +21,7 @@ export class HUD {
   private root: HTMLElement;
   private shopTab: 'pegs' | 'autos' | 'skills' | 'global' | 'marbles' = 'pegs';
   private onPlacementSelect?: (typeId: string | null) => void;
-  /** DOM 事件是否已绑定（全局 DOM 元素，跨场景重启不销毁，需去重防止重复绑定） */
-  private domBound = false;
+  /** DOM 事件用 onclick 赋值（覆盖式），每次 mount 覆盖旧回调，确保引用最新 HUD 实例，无需去重 */
   private selectedPegType: string | null = null;
 
 
@@ -43,14 +42,11 @@ export class HUD {
   mount() {
     this.root.style.display = 'block';
     this.injectIcons();
-    // DOM 元素是全局的，跨场景重启不销毁，事件只绑一次防止重复触发
-    if (!this.domBound) {
-      this.domBound = true;
-      this.bindHeader();
-      this.bindShopTabs();
-      this.bindPanelToggles();
-      this.bindModals();
-    }
+    // DOM 元素是全局的，跨场景重启不销毁；用 onclick 赋值（覆盖式）确保每次 mount 绑定最新回调
+    this.bindHeader();
+    this.bindShopTabs();
+    this.bindPanelToggles();
+    this.bindModals();
     this.bindEvents();
     this.renderShop();
 
@@ -88,20 +84,18 @@ export class HUD {
   }
 
   private bindHeader() {
-    document.getElementById('btn-menu')!.addEventListener('click', () => {
-      // 归零弹窗只在 _ready 时显示，菜单按钮保持原样
+    (document.getElementById('btn-menu') as HTMLElement).onclick = () => {
       document.getElementById('modal-menu')!.classList.add('open');
-    });
-    document.getElementById('btn-prestige')!.addEventListener('click', () => {
+    };
+    (document.getElementById('btn-prestige') as HTMLElement).onclick = () => {
       this.handlePrestigeClick();
-    });
-    document.getElementById('btn-boss')!.addEventListener('click', () => {
-      // 手动触发 Boss 战（事件由 GameScene 监听后开启场景内战斗）
+    };
+    (document.getElementById('btn-boss') as HTMLElement).onclick = () => {
       const id = GameState.currentBossId;
       if (id && !GameState.isBossDefeated()) {
         bus.emit(EVT.BOSS_TRIGGER, id);
       }
-    });
+    };
   }
 
   /** 归零按钮：达标则打开归零试炼弹窗，未达标则提示进度；有 Boss 章节需先击败 Boss */
@@ -149,85 +143,57 @@ export class HUD {
       panel.classList.toggle('collapsed', !willOpen);
       backdrop.classList.toggle('show', willOpen);
     };
-    // 点击标题条切换展开/收起
-    document.querySelector('#left-panel .panel-title')?.addEventListener('click', (e) => {
+    (document.querySelector('#left-panel .panel-title') as HTMLElement).onclick = (e) => {
       e.stopPropagation();
       toggle();
-    });
-    // 点击遮罩收起
-    backdrop.addEventListener('click', () => toggle(false));
+    };
+    (backdrop as HTMLElement).onclick = () => toggle(false);
   }
 
   private bindShopTabs() {
     const tabs = document.querySelectorAll('.tab-btn');
     tabs.forEach((t) => {
-      t.addEventListener('click', (e) => {
+      (t as HTMLElement).onclick = (e) => {
         tabs.forEach((x) => x.classList.remove('active'));
         (e.currentTarget as HTMLElement).classList.add('active');
         this.shopTab = (e.currentTarget as HTMLElement).dataset.tab as 'pegs' | 'autos' | 'skills' | 'global';
         this.renderShop();
-      });
+      };
     });
   }
 
   private bindModals() {
-    document.getElementById('prestige-cancel')!.addEventListener('click', () => {
+    (document.getElementById('prestige-cancel') as HTMLElement).onclick = () => {
       document.getElementById('modal-prestige')!.classList.remove('open');
-    });
-    document.getElementById('prestige-confirm')!.addEventListener('click', () => {
+    };
+    (document.getElementById('prestige-confirm') as HTMLElement).onclick = () => {
       document.getElementById('modal-prestige')!.classList.remove('open');
-      // 归零修复：先执行状态重置，再延迟 2 帧切换场景
-      // 第 1 帧让 modal 关闭 + HUD/DOM 清理，第 2 帧再启动新场景，避免旧实例残留导致卡死
-      GameState.prestige(GameState.chapterId + 1);
-      // 先清理当前 HUD（停止定时器、取消 RAF），避免重启后残留
-      this.stopRateTracking();
-      if (this.taskHintRaf !== null) {
-        cancelAnimationFrame(this.taskHintRaf);
-        this.taskHintRaf = null;
-      }
-      requestAnimationFrame(() => {
-        // 再等一帧确保 shutdown 事件完成
-        requestAnimationFrame(() => {
-          // 归零后跳转到章节选择页（玩家可选择进入新章节、重玩旧章节或无尽模式）
-          this.scene.scene.start('ChapterSelect');
-        });
-      });
-    });
+      bus.emit(EVT.PRESTIGE_CONFIRM);
+    };
 
-    document.getElementById('menu-home')!.addEventListener('click', () => {
+    (document.getElementById('menu-home') as HTMLElement).onclick = () => {
       document.getElementById('modal-menu')!.classList.remove('open');
-      GameState.saveGame();
-      // 同样延迟 2 帧切换场景
-      this.stopRateTracking();
-      if (this.taskHintRaf !== null) {
-        cancelAnimationFrame(this.taskHintRaf);
-        this.taskHintRaf = null;
-      }
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          this.scene.scene.start('Menu');
-        });
-      });
-    });
-    document.getElementById('menu-save')!.addEventListener('click', () => {
+      bus.emit(EVT.EXIT_TO_MENU);
+    };
+    (document.getElementById('menu-save') as HTMLElement).onclick = () => {
       GameState.saveGame();
       this.showToast('已保存', 'save');
       document.getElementById('modal-menu')!.classList.remove('open');
-    });
-    document.getElementById('menu-wipe')!.addEventListener('click', () => {
+    };
+    (document.getElementById('menu-wipe') as HTMLElement).onclick = () => {
       if (confirm(`确定要清空当前存档（槽位 ${GameState.slot + 1}）吗？此操作不可恢复。`)) {
         SaveSystem.wipeSlot(GameState.slot);
         location.reload();
       }
-    });
+    };
 
     // 点击遮罩关闭
     for (const id of ['modal-prestige', 'modal-menu']) {
-      document.getElementById(id)!.addEventListener('click', (e) => {
+      (document.getElementById(id) as HTMLElement).onclick = (e) => {
         if (e.target === e.currentTarget) {
           (e.currentTarget as HTMLElement).classList.remove('open');
         }
-      });
+      };
     }
   }
 

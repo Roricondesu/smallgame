@@ -319,7 +319,8 @@ class GameStateClass {
       return false;
     }
     this._save.skillLevels[id] = lvl + 1;
-    if (id === 'initialValue') {
+    // 任意一阶初始弹珠技能升级后都重新计算初始数值
+    if (id.startsWith('initialValue')) {
       this._save.ballInitialValue = this.computeInitialValue();
       bus.emit(EVT.BALL_VALUE_CHANGED, this._save.ballInitialValue);
     }
@@ -328,11 +329,26 @@ class GameStateClass {
   }
 
   computeInitialValue(): bigint {
-    const base = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
-    const lvl = this.getSkillLevel('initialValue');
-    let v: bigint;
-    if (lvl < base.length) v = toBig(base[lvl]);
-    else v = toBig(base[base.length - 1] * Math.pow(2, lvl - base.length + 1));
+    // 基础值 1
+    let v = toBig(1);
+    // 加法阶段：initialValue1-5（每级分别 +1 / +10 / +100 / +1000 / +10000）
+    const additiveIds = ['initialValue1', 'initialValue2', 'initialValue3', 'initialValue4', 'initialValue5'];
+    for (const sid of additiveIds) {
+      const cfg = SKILL_MAP[sid];
+      const lvl = this.getSkillLevel(sid);
+      if (lvl > 0 && cfg?.getValue) {
+        v = bigAddNum(v, cfg.getValue(lvl));
+      }
+    }
+    // 乘法阶段：initialValue6-7（每级分别 +1% / +10%）
+    const multIds = ['initialValue6', 'initialValue7'];
+    for (const sid of multIds) {
+      const cfg = SKILL_MAP[sid];
+      const lvl = this.getSkillLevel(sid);
+      if (lvl > 0 && cfg?.getValue) {
+        v = bigMulNum(v, 1 + cfg.getValue(lvl));
+      }
+    }
     // 永久弹珠强化：每周目生效的起始数值加成
     const boost = 1 + this.getCrystalLevel('ballValueBoost') * 0.1;
     if (boost > 1) v = bigMulNum(v, boost);
@@ -662,7 +678,7 @@ class GameStateClass {
       this._save.endlessUnlocked = true;
     }
     this._save.endlessMode = false; // 归零后默认进入章节选择，由玩家选择是否进入无尽
-    this._save.gold = toBig(this.getCrystalLevel('startGold') * 1000);
+    this._save.gold = toBig(100 + this.getCrystalLevel('startGold') * 1000);
     this._save.totalGold = 0n;
     this._save.pegs = [];
     this._save.autoDroppers = {};
@@ -711,7 +727,7 @@ class GameStateClass {
     this._save.autoDroppers = {};
     this._save.skillLevels = {};
     this._save.bossDefeated = {};
-    this._save.gold = toBig(this.getCrystalLevel('startGold') * 1000);
+    this._save.gold = toBig(100 + this.getCrystalLevel('startGold') * 1000);
     this._save.totalGold = 0n;
     this._save.ballInitialValue = toBig(1);
     this._save.selectedMarble = '';
@@ -729,7 +745,7 @@ class GameStateClass {
     this._save.autoDroppers = {};
     this._save.skillLevels = {};
     this._save.bossDefeated = {};
-    this._save.gold = toBig(this.getCrystalLevel('startGold') * 1000);
+    this._save.gold = toBig(100 + this.getCrystalLevel('startGold') * 1000);
     this._save.totalGold = 0n;
     this._save.ballInitialValue = toBig(1);
     this._save.selectedMarble = '';

@@ -26,6 +26,10 @@ export const EVT = {
   BOSS_DEFEATED: 'boss_defeated',
   /** 场景背景暗化设置变化（参数：暗化百分比 0-80） */
   BG_DARKEN_CHANGED: 'bg_darken_changed',
+  /** 返回主菜单（由 HUD 发出，GameScene 监听后执行场景切换） */
+  EXIT_TO_MENU: 'exit_to_menu',
+  /** 确认归零（由 HUD 发出，GameScene 监听后执行归零+场景切换） */
+  PRESTIGE_CONFIRM: 'prestige_confirm',
 } as const;
 
 type EventCallback = (...args: unknown[]) => void;

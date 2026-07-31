@@ -178,17 +178,15 @@ export class MenuScene extends Phaser.Scene {
   private bindMenuLinks() {
     const links = document.querySelectorAll('.menu-link');
     links.forEach((link) => {
-      // 避免重复绑定
-      if ((link as HTMLElement).dataset.bound === '1') return;
-      (link as HTMLElement).dataset.bound = '1';
-      link.addEventListener('click', () => {
+      // onclick 覆盖式赋值：每次 create 重新绑定最新回调，避免旧闭包引用已 shutdown 的场景
+      (link as HTMLElement).onclick = () => {
         const act = (link as HTMLElement).dataset.menu;
         if (act === 'start') this.openChapterSelect();
         else if (act === 'slots') this.showSlotPicker();
         else if (act === 'shop') this.showCrystalShop();
         else if (act === 'codex') this.showCodex();
         else if (act === 'settings') this.showSettings();
-      });
+      };
     });
   }
 
@@ -215,10 +213,10 @@ export class MenuScene extends Phaser.Scene {
       `;
       document.body.appendChild(overlay);
       const ov = overlay;
-      document.getElementById('menu-slot-close')!.addEventListener('click', () => ov.classList.remove('open'));
-      ov.addEventListener('click', (e) => {
+      (document.getElementById('menu-slot-close') as HTMLElement).onclick = () => ov.classList.remove('open');
+      (ov as HTMLElement).onclick = (e) => {
         if (e.target === ov) ov.classList.remove('open');
-      });
+      };
     }
     overlay.classList.add('open');
     this.renderSlotList(overlay as HTMLElement);
@@ -267,24 +265,27 @@ export class MenuScene extends Phaser.Scene {
       const cont = el.querySelector('[data-act="continue"]') as HTMLButtonElement | null;
       const newGame = el.querySelector('[data-act="new"]') as HTMLButtonElement | null;
       const del = el.querySelector('[data-act="delete"]') as HTMLButtonElement | null;
-      cont?.addEventListener('click', () => this.selectSlot(slot, false, overlay));
-      newGame?.addEventListener('click', () => this.selectSlot(slot, true, overlay));
-      del?.addEventListener('click', () => {
+      // onclick 覆盖式：renderSlotList 每次 innerHTML 重建元素，新元素无旧监听器，用 onclick 最安全
+      if (cont) cont.onclick = () => this.selectSlot(slot, false, overlay);
+      if (newGame) newGame.onclick = () => this.selectSlot(slot, true, overlay);
+      if (del) del.onclick = () => {
         if (confirm(`确定删除存档 ${slot + 1}？此操作不可恢复。`)) {
           SaveSystem.wipeSlot(slot);
           this.renderSlotList(overlay);
           this.refreshSlotHint();
         }
-      });
+      };
     }
   }
 
   private selectSlot(slot: number, isNew: boolean, overlay: HTMLElement) {
     if (isNew) SaveSystem.wipeSlot(slot);
     GameState.loadSlot(slot);
+    // 直接结算离线收益（不再经过离线报告页），并保留结果到存档
+    GameState.applyOffline();
     overlay.classList.remove('open');
     this.refreshSlotHint();
-    this.scene.start('OfflineReport');
+    this.scene.start('Game');
   }
 
   // ===== 数晶商店 =====

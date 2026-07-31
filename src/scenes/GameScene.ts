@@ -3,7 +3,7 @@
 // restitution 控制弹力，collider 自动计算反弹
 
 import Phaser from 'phaser';
-import { GameState, formatNum, bigMulNum } from '../systems/GameState';
+import { GameState, formatNum, bigMulNum, toBig } from '../systems/GameState';
 import { bigLog10Abs } from '../systems/BigNum';
 import { PEG_MAP } from '../data/pegs';
 
@@ -138,6 +138,8 @@ export class GameScene extends Phaser.Scene {
   private poisonedPegBuffs = new Map<string, number>();
   // bus 事件回调引用（shutdown 时统一 off，防止场景重启后残留监听引用旧场景导致卡死）
   private busCbs: Array<{ event: string; cb: (...args: unknown[]) => void }> = [];
+  // Matter 碰撞事件回调引用（shutdown 时需 off，防止场景重启后旧回调引用已销毁场景导致卡死）
+  private collisionCb: ((event: MatterJS.IEventCollision<MatterJS.Engine>) => void) | null = null;
 
   // 布局相关引用（resize 时需重新定位的元素）
   private gridBg!: Phaser.GameObjects.Graphics;
@@ -245,13 +247,14 @@ export class GameScene extends Phaser.Scene {
     // 初始化占位钉子（显示 0，可被替换）：仅在当前章节布局位置渲染
     this.initPlaceholders(occupied);
 
-    // Matter 碰撞事件：使用 collisionStart
-    this.matter.world.on('collisionstart', (event: MatterJS.IEventCollision<MatterJS.Engine>) => {
+    // Matter 碰撞事件：使用 collisionStart（存储引用以便 shutdown 时移除）
+    this.collisionCb = (event: MatterJS.IEventCollision<MatterJS.Engine>) => {
       for (const pair of event.pairs) {
         const { bodyA, bodyB } = pair;
         this.handleCollision(bodyA, bodyB);
       }
-    });
+    };
+    this.matter.world.on('collisionstart', this.collisionCb);
 
     // 输入事件：点击网格区域内任意位置放球；放置模式下则放置钉子
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -319,6 +322,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 事件监听：用 onBus 绑定，shutdown 时统一 off，防止场景重启后残留监听引用旧场景导致卡死
+    // 返回主菜单：由 HUD 触发，场景自身执行切换（确保 this 是当前活动的场景实例）
+    this.onBus(EVT.EXIT_TO_MENU, () => {
+      GameState.saveGame();
+      this.scene.start('Menu');
+    });
+    // 确认归零：由 HUD 触发，场景自身执行归零+切换
+    this.onBus(EVT.PRESTIGE_CONFIRM, () => {
+      GameState.prestige(GameState.chapterId + 1);
+      this.scene.start('ChapterSelect');
+    });
     this.onBus(EVT.ACTIVE_TRIGGERED, (payload: unknown) => {
       const p = payload as { skillId: string; duration: number };
       if (p.skillId === 'frenzy' || p.skillId === 'rhythm') {
@@ -415,12 +428,46 @@ export class GameScene extends Phaser.Scene {
       // 清理 bus 监听，避免场景重启后旧回调引用已销毁的场景对象导致卡死
       for (const { event, cb } of this.busCbs) bus.off(event, cb);
       this.busCbs = [];
+      // 移除 Matter 碰撞回调：shutdown 时 matter.world 可能已被 Phaser 销毁，必须加 null 保护
+      // 否则异常会中断 shutdown 回调，导致 HUD 卸载等后续清理不执行，场景切换卡死
+      const mw = this.matter?.world;
+      if (this.collisionCb) {
+        if (mw) {
+          try { mw.off('collisionstart', this.collisionCb); } catch (e) { /* world 已销毁 */ }
+        }
+        this.collisionCb = null;
+      }
       // 复原时间缩放，防止上一场战斗的 slowdown 残留
-      this.matter.world.engine.timing.timeScale = 1;
+      if (mw?.engine) {
+        try { mw.engine.timing.timeScale = 1; } catch (e) { /* 已销毁 */ }
+      }
       this.hud.unmount();
       this.dialogue?.unmount();
       this.bossDialogue?.unmount();
       this.cleanupSceneBoss();
+      // 清理所有弹珠与钉子引用，防止旧碰撞回调访问已销毁对象
+      this.balls = [];
+      this.ballBySprite.clear();
+      this.pegBySprite.clear();
+      this.pegSprites.clear();
+      this.placeholderPegs.clear();
+      this.ballLabels = new WeakSet<MatterJS.Body>();
+      this.pegLabels = new WeakSet<MatterJS.Body>();
+      this.wallLabels = new WeakSet<MatterJS.Body>();
+      // 移除墙体物理体（standalone body 不绑定 game object，需手动移除）
+      if (mw) {
+        for (const b of this.wallBodies) {
+          try { mw.remove(b); } catch (e) { /* 已销毁 */ }
+        }
+      }
+      this.wallBodies = [];
+      // 重置在 applyLayout 中被引用的实例字段，防止下次 create 时指向已销毁对象导致 setSize 报错
+      this.frenzyOverlay = null as unknown as Phaser.GameObjects.Rectangle;
+      this.comboDisplay = null as unknown as Phaser.GameObjects.Text;
+      this.bgImage = null as unknown as Phaser.GameObjects.Image;
+      this.bgGradient = null as unknown as Phaser.GameObjects.Graphics;
+      this.gridBg = null as unknown as Phaser.GameObjects.Graphics;
+      this.gridBgRect = null as unknown as Phaser.GameObjects.Rectangle;
       this.scale.off('resize', this.onResize, this);
     });
     this.events.on('pause', () => GameState.saveGame());
@@ -505,8 +552,10 @@ export class GameScene extends Phaser.Scene {
     this.repositionPegs();
     // Matter 世界边界基于设计坐标系（左右挡墙，顶部/底部开放）
     this.matter.world.setBounds(0, 0, DESIGN_W, DESIGN_H, 1, true, true, false, false);
-    if (this.frenzyOverlay) this.frenzyOverlay.setSize(DESIGN_W, DESIGN_H);
-    if (this.comboDisplay) this.comboDisplay.setPosition(DESIGN_W - 20, 80);
+    // frenzyOverlay/comboDisplay 在 applyLayout 之后才创建，但实例字段在场景重启时不会自动重置
+    // 若指向上一轮已销毁的对象，调用 setSize 会抛异常中断 create，导致后续 HUD 无法 mount
+    if (this.frenzyOverlay && this.frenzyOverlay.active) this.frenzyOverlay.setSize(DESIGN_W, DESIGN_H);
+    if (this.comboDisplay && this.comboDisplay.active) this.comboDisplay.setPosition(DESIGN_W - 20, 80);
     // 根据画布尺寸缩放 camera，使设计区域完整可见
     this.fitCamera();
   }
@@ -552,8 +601,10 @@ export class GameScene extends Phaser.Scene {
 
   // 重建墙体：销毁旧物理体并按新布局创建（静态体尺寸无法直接改，需重建）
   private rebuildWalls() {
+    const mw = this.matter?.world;
+    if (!mw) return;
     for (const b of this.wallBodies) {
-      this.matter.world.remove(b);
+      try { mw.remove(b); } catch (e) { /* world 已销毁 */ }
     }
     this.wallBodies = [];
     this.wallLabels = new WeakSet<MatterJS.Body>();
@@ -595,6 +646,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onResize(_gameSize: Phaser.Structs.Size) {
+    // 场景切换瞬间可能触发 resize，此时 game object 可能已被销毁或尚未就绪，直接忽略
+    // isActive 在 create 期间也可能为 true，所以额外检查关键对象是否存在
+    if (!this.bgImage || !this.gridBg || !this.gridBgRect) return;
+    if (!this.scene.isActive() && !this.scene.isVisible()) return;
     // 球的位置不调整，让其按物理自然下落；仅重布局静态元素
     this.applyLayout();
   }
@@ -835,6 +890,15 @@ export class GameScene extends Phaser.Scene {
 
   // ===== 投弹 =====
   private dropBallManual(x: number) {
+    // 每颗弹珠消耗 1 金币：先计算总数并检查金币是否充足
+    const multiThrow = GameState.getSkillLevel('multiThrow');
+    const count = 1 + multiThrow;
+    const cost = toBig(count);
+    if (GameState.gold < cost) {
+      this.hud.showToast('金币不足，无法投放弹珠', 'gold');
+      return;
+    }
+
     const lvl = GameState.getSkillLevel('chargeThrow');
     const init = GameState.ballInitialValue;
     let value = init;
@@ -850,8 +914,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const multiThrow = GameState.getSkillLevel('multiThrow');
-    const count = 1 + multiThrow;
+    // 扣除金币（spendGold 会 emit GOLD_CHANGED）
+    GameState.spendGold(cost);
+
     for (let i = 0; i < count; i++) {
       const offsetX = x + (i - count / 2) * 16;
       this.spawnBall(offsetX, 10, value, 'manual', marble);

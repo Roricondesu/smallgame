@@ -1296,6 +1296,10 @@
       gap: 14px;
       overflow-y: auto;
       padding: 4px;
+      flex: 1;
+      min-height: 0;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
     }
     .chapter-card {
       position: relative;
@@ -1406,6 +1410,14 @@
       .chapter-select-list { grid-template-columns: 1fr; gap: 10px; }
       /* 章节卡片小屏压缩高度，圆角更小 */
       .chapter-card { min-height: 0; padding: 14px; border-radius: var(--radius-sm); }
+      /* 内层容器占满视口高度，确保列表可滚动 */
+      .chapter-select-inner { height: 94vh; max-height: 94vh; }
+      /* 进入按钮触摸热区增大 */
+      .chapter-card .btn.primary, .chapter-card .btn.endless {
+        padding: 12px 14px;
+        font-size: 14px;
+        min-height: 44px;
+      }
     }
   </style>
 </head>
@@ -1422,8 +1434,8 @@
     <nav class="menu-nav">
       <h1 class="menu-title">弹珠炼金术</h1>
       <div class="menu-subtitle">Pinball Alchemy</div>
-      <button class="menu-link" data-menu="start">开始游戏</button>
-      <button class="menu-link" data-menu="slots">选择存档</button>
+      <button class="menu-link" data-menu="slots">开始游戏</button>
+      <button class="menu-link" data-menu="start">选择章节</button>
       <button class="menu-link" data-menu="shop">数晶商店</button>
       <button class="menu-link" data-menu="codex">图鉴</button>
       <button class="menu-link" data-menu="settings">设置</button>
@@ -1502,31 +1514,47 @@
   </div>
 
   <script>
-    // 加载动画：等待字体等资源加载完毕再淡出
+    // 加载动画：等待 Phaser 资源、字体、DOM 全部就绪后再淡出，避免提前黑屏
     (function () {
       const loader = document.getElementById('loader');
       const fill = document.getElementById('loader-fill');
       let progress = 0;
-      // 模拟进度推进，避免静止卡顿
+      let phaserDone = false;
+      let fontsDone = false;
+      let domDone = false;
+      // 模拟进度推进（在 Phaser 真实进度到来前保持视觉移动，封顶 85%）
       const tick = setInterval(() => {
-        progress = Math.min(progress + 8, 90);
+        progress = Math.min(progress + 3, 85);
         if (fill) fill.style.width = progress + '%';
-      }, 120);
+      }, 150);
       const finish = () => {
-        clearInterval(tick);
-        if (fill) fill.style.width = '100%';
-        setTimeout(() => loader && loader.classList.add('hide'), 200);
+        if (phaserDone && fontsDone && domDone) {
+          clearInterval(tick);
+          if (fill) fill.style.width = '100%';
+          // 延迟一帧再隐藏，确保下一个场景的 DOM 已渲染，杜绝黑屏
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            loader && loader.classList.add('hide');
+          }));
+        }
       };
-      // 等待字体加载完成
+      // 等待字体
       const fontsReady = (document.fonts && document.fonts.ready) || Promise.resolve();
-      // 等待 window load（所有资源）
-      const loadEvt = new Promise((resolve) => {
-        if (document.readyState === 'complete') resolve(null);
-        else window.addEventListener('load', resolve, { once: true });
-      });
-      Promise.all([fontsReady, loadEvt]).then(finish).catch(finish);
-      // 兜底：最长 3s 后强制结束
-      setTimeout(finish, 3000);
+      fontsReady.then(() => { fontsDone = true; finish(); }).catch(() => { fontsDone = true; finish(); });
+      // 等待 DOM load
+      if (document.readyState === 'complete') domDone = true;
+      else window.addEventListener('load', () => { domDone = true; finish(); }, { once: true });
+      // Phaser 加载进度（由 BootScene 实时上报）
+      window.__phaserLoadProgress = function (pct) {
+        progress = Math.max(progress, Math.min(90, pct * 90));
+        if (fill) fill.style.width = progress + '%';
+      };
+      // Phaser 资源 + 纹理全部就绪（由 BootScene.create 上报）
+      window.__phaserLoadComplete = function () {
+        phaserDone = true;
+        finish();
+      };
+      // 兜底：最长 8s 后强制结束（防止 Phaser 异常时永久卡住）
+      setTimeout(() => { phaserDone = true; finish(); }, 8000);
     })();
   </script>
   <script type="module" src="/src/main.ts"></script>

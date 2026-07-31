@@ -34,6 +34,13 @@ export class BootScene extends Phaser.Scene {
     this.load.image('skill_holy', '/skills/holy.png');
     this.load.image('skill_dark', '/skills/dark.png');
 
+    // 实时上报加载进度给 HTML loader，驱动进度条
+    this.load.on('progress', (value: number) => {
+      const cb = (window as unknown as { __phaserLoadProgress?: (p: number) => void }).__phaserLoadProgress;
+      if (cb) cb(value);
+    });
+
+    // 程序化纹理（同步生成）
     this.makeBallTextures();
     this.makePegTextures();
     this.makeParticleTexture();
@@ -42,6 +49,9 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    // 所有异步资源 + 程序化纹理均已就绪，通知 loader 可以淡出
+    const cb = (window as unknown as { __phaserLoadComplete?: () => void }).__phaserLoadComplete;
+    if (cb) cb();
     this.scene.start('Menu');
   }
 

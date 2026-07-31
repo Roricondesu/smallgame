@@ -182,6 +182,16 @@ export class SaveSystem {
 
     if (!merged.skillLevels) merged.skillLevels = {};
     if (!merged.crystalUpgrades) merged.crystalUpgrades = {};
+    // 迁移旧版单技能 initialValue → 新版 7 阶段系统（initialValue1-7）
+    // 旧版 initialValue 等级直接映射到 initialValue1（封顶 10 级），并删除旧 key
+    const skillLevels = merged.skillLevels as Record<string, number>;
+    if ('initialValue' in skillLevels) {
+      const oldLvl = skillLevels.initialValue || 0;
+      if (oldLvl > 0 && !('initialValue1' in skillLevels)) {
+        skillLevels.initialValue1 = Math.min(10, oldLvl);
+      }
+      delete skillLevels.initialValue;
+    }
     if (!merged.marbles) merged.marbles = {};
     if (merged.selectedMarble === undefined) merged.selectedMarble = '';
     if (!merged.seenDialogues) merged.seenDialogues = [];

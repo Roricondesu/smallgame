@@ -3,12 +3,62 @@
 import type { SkillConfig } from '../types';
 
 export const SKILLS: SkillConfig[] = [
-  // 手动系
+  // 手动系 - 初始弹珠数值（5 个加法阶段 + 2 个百分比阶段，逐级解锁）
+  // 每阶段满级 100，前置阶段满级后才解锁下一阶段；成本增长放缓以保证 100 级可达成
   {
-    id: 'initialValue', name: '初始弹珠数字', category: 'manual', maxLevel: 50,
-    baseCost: 50, costGrowth: 2,
-    effect: (lvl) => `初始值提升至 ${[1,5,10,25,50,100,250,500,1000,2500,5000,10000][lvl] ?? 10000 * Math.pow(2, lvl-11)}`,
-    icon: 'ball', desc: '提升每次投下的弹珠起始数值',
+    id: 'initialValue1', name: '初始弹珠·微光', category: 'manual', maxLevel: 100,
+    baseCost: 50, costGrowth: 1.15,
+    effect: (lvl) => `初始值 +${lvl * 1}`,
+    getValue: (lvl) => lvl * 1,
+    icon: 'ball', desc: '阶段1：每级增加初始弹珠数值 +1',
+  },
+  {
+    id: 'initialValue2', name: '初始弹珠·闪耀', category: 'manual', maxLevel: 100,
+    baseCost: 500, costGrowth: 1.15,
+    effect: (lvl) => `初始值 +${lvl * 10}`,
+    getValue: (lvl) => lvl * 10,
+    icon: 'ball', desc: '阶段2：每级增加初始弹珠数值 +10',
+    prereq: { id: 'initialValue1', level: 100 }, prereqBonusLevels: 0,
+  },
+  {
+    id: 'initialValue3', name: '初始弹珠·辉芒', category: 'manual', maxLevel: 100,
+    baseCost: 5000, costGrowth: 1.15,
+    effect: (lvl) => `初始值 +${lvl * 100}`,
+    getValue: (lvl) => lvl * 100,
+    icon: 'ball', desc: '阶段3：每级增加初始弹珠数值 +100',
+    prereq: { id: 'initialValue2', level: 100 }, prereqBonusLevels: 0,
+  },
+  {
+    id: 'initialValue4', name: '初始弹珠·星华', category: 'manual', maxLevel: 100,
+    baseCost: 50000, costGrowth: 1.15,
+    effect: (lvl) => `初始值 +${lvl * 1000}`,
+    getValue: (lvl) => lvl * 1000,
+    icon: 'ball', desc: '阶段4：每级增加初始弹珠数值 +1000',
+    prereq: { id: 'initialValue3', level: 100 }, prereqBonusLevels: 0,
+  },
+  {
+    id: 'initialValue5', name: '初始弹珠·极光', category: 'manual', maxLevel: 100,
+    baseCost: 500000, costGrowth: 1.15,
+    effect: (lvl) => `初始值 +${lvl * 10000}`,
+    getValue: (lvl) => lvl * 10000,
+    icon: 'ball', desc: '阶段5：每级增加初始弹珠数值 +10000',
+    prereq: { id: 'initialValue4', level: 100 }, prereqBonusLevels: 0,
+  },
+  {
+    id: 'initialValue6', name: '初始弹珠·倍增', category: 'manual', maxLevel: 100,
+    baseCost: 5000000, costGrowth: 1.13,
+    effect: (lvl) => `初始值 +${lvl}%`,
+    getValue: (lvl) => lvl * 0.01,
+    icon: 'ball', desc: '阶段6：每级增加初始弹珠数值 +1%（乘算）',
+    prereq: { id: 'initialValue5', level: 100 }, prereqBonusLevels: 0,
+  },
+  {
+    id: 'initialValue7', name: '初始弹珠·超脱', category: 'manual', maxLevel: 100,
+    baseCost: 50000000, costGrowth: 1.11,
+    effect: (lvl) => `初始值 +${lvl * 10}%`,
+    getValue: (lvl) => lvl * 0.10,
+    icon: 'ball', desc: '阶段7：每级增加初始弹珠数值 +10%（乘算）',
+    prereq: { id: 'initialValue6', level: 100 }, prereqBonusLevels: 0,
   },
   {
     id: 'chargeThrow', name: '蓄力投掷', category: 'manual', maxLevel: 30,
@@ -16,7 +66,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `手动弹珠额外 +${(lvl * 10)}%`,
     getValue: (lvl) => 1 + lvl * 0.1,
     icon: 'charge', desc: '手动点击投下的弹珠获得加成',
-    prereq: { id: 'initialValue', level: 5 }, prereqBonusLevels: 5,
+    prereq: { id: 'initialValue1', level: 5 }, prereqBonusLevels: 5,
   },
   {
     id: 'chargeThrow2', name: '蓄力大师', category: 'manual', maxLevel: 30,
