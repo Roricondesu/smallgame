@@ -18,7 +18,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `初始值 +${lvl * 10}`,
     getValue: (lvl) => lvl * 10,
     icon: 'ball', desc: '阶段2：每级增加初始弹珠数值 +10',
-    prereq: { id: 'initialValue1', level: 100 }, prereqBonusLevels: 0,
+    prereq: { id: 'initialValue1', level: 10 }, prereqBonusLevels: 0,
   },
   {
     id: 'initialValue3', name: '初始弹珠·辉芒', category: 'manual', maxLevel: 100,
@@ -26,7 +26,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `初始值 +${lvl * 100}`,
     getValue: (lvl) => lvl * 100,
     icon: 'ball', desc: '阶段3：每级增加初始弹珠数值 +100',
-    prereq: { id: 'initialValue2', level: 100 }, prereqBonusLevels: 0,
+    prereq: { id: 'initialValue2', level: 10 }, prereqBonusLevels: 0,
   },
   {
     id: 'initialValue4', name: '初始弹珠·星华', category: 'manual', maxLevel: 100,
@@ -34,7 +34,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `初始值 +${lvl * 1000}`,
     getValue: (lvl) => lvl * 1000,
     icon: 'ball', desc: '阶段4：每级增加初始弹珠数值 +1000',
-    prereq: { id: 'initialValue3', level: 100 }, prereqBonusLevels: 0,
+    prereq: { id: 'initialValue3', level: 10 }, prereqBonusLevels: 0,
   },
   {
     id: 'initialValue5', name: '初始弹珠·极光', category: 'manual', maxLevel: 100,
@@ -42,7 +42,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `初始值 +${lvl * 10000}`,
     getValue: (lvl) => lvl * 10000,
     icon: 'ball', desc: '阶段5：每级增加初始弹珠数值 +10000',
-    prereq: { id: 'initialValue4', level: 100 }, prereqBonusLevels: 0,
+    prereq: { id: 'initialValue4', level: 10 }, prereqBonusLevels: 0,
   },
   {
     id: 'initialValue6', name: '初始弹珠·倍增', category: 'manual', maxLevel: 100,
@@ -50,7 +50,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `初始值 +${lvl}%`,
     getValue: (lvl) => lvl * 0.01,
     icon: 'ball', desc: '阶段6：每级增加初始弹珠数值 +1%（乘算）',
-    prereq: { id: 'initialValue5', level: 100 }, prereqBonusLevels: 0,
+    prereq: { id: 'initialValue5', level: 10 }, prereqBonusLevels: 0,
   },
   {
     id: 'initialValue7', name: '初始弹珠·超脱', category: 'manual', maxLevel: 100,
@@ -58,7 +58,7 @@ export const SKILLS: SkillConfig[] = [
     effect: (lvl) => `初始值 +${lvl * 10}%`,
     getValue: (lvl) => lvl * 0.10,
     icon: 'ball', desc: '阶段7：每级增加初始弹珠数值 +10%（乘算）',
-    prereq: { id: 'initialValue6', level: 100 }, prereqBonusLevels: 0,
+    prereq: { id: 'initialValue6', level: 10 }, prereqBonusLevels: 0,
   },
   {
     id: 'chargeThrow', name: '蓄力投掷', category: 'manual', maxLevel: 30,
