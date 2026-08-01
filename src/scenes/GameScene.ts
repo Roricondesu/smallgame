@@ -6,6 +6,7 @@ import Phaser from 'phaser';
 import { GameState, formatNum, bigMulNum, toBig } from '../systems/GameState';
 import { bigLog10Abs } from '../systems/BigNum';
 import { PEG_MAP } from '../data/pegs';
+import { ensureTextures } from '../systems/TextureFactory';
 
 import { DIALOGUE_MAP, chapterIntroId, chapterMidpointId, chapterPrestigeReadyId } from '../data/dialogues';
 import { DialogueSystem } from '../systems/DialogueSystem';
@@ -183,6 +184,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // 防御性纹理检查：HMR 或场景切换后纹理可能丢失，导致 Matter Image 渲染为空（物理体正常但不可见）
+    ensureTextures(this);
+
     // 先计算布局参数（gridX/gridY/settleY），再创建元素，最后 applyLayout 统一定位
     this.computeLayout();
 
@@ -535,7 +539,10 @@ export class GameScene extends Phaser.Scene {
   // 根据实际画布尺寸缩放 camera，使设计区域完整可见并居中
   private fitCamera() {
     const W = this.scale.width, H = this.scale.height;
+    // 防御：场景切换瞬间 W/H 可能为 0，导致 zoom=0 使所有对象缩放为无限小（不可见）
+    if (W <= 0 || H <= 0) return;
     const zoom = Math.min(W / DESIGN_W, H / DESIGN_H);
+    if (!isFinite(zoom) || zoom <= 0) return;
     this.cameras.main.setZoom(zoom);
     // 居中：scroll 使设计区域中心对齐画布中心
     this.cameras.main.centerOn(DESIGN_W / 2, DESIGN_H / 2);

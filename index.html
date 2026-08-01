@@ -1273,33 +1273,41 @@
       inset: 0;
       z-index: 50;
       display: flex;
-      align-items: center;
+      align-items: stretch;
       justify-content: center;
       background: radial-gradient(ellipse at center, #0a1018 0%, #050709 100%);
       font-family: "Z Labs RoundPix 12px M CN", sans-serif;
+      padding: env(safe-area-inset-top, 8px) env(safe-area-inset-right, 8px) env(safe-area-inset-bottom, 8px) env(safe-area-inset-left, 8px);
     }
     #chapter-select-ui.hidden { display: none; }
     .chapter-select-inner {
-      width: min(1100px, 96vw);
-      max-height: 96vh;
+      width: min(1100px, 100%);
+      /* 用 100dvh 适配移动端地址栏；fallback 100vh */
+      height: 100vh;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 10px;
+      padding: 10px;
+      box-sizing: border-box;
     }
     .chapter-select-header {
       display: flex;
       justify-content: flex-end;
+      flex-shrink: 0;
     }
     .chapter-select-list {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 14px;
+      /* 移动端默认单列，桌面端多列由媒体查询覆盖 */
+      grid-template-columns: 1fr;
+      gap: 12px;
       overflow-y: auto;
       padding: 4px;
-      flex: 1;
+      flex: 1 1 auto;
       min-height: 0;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-y;
+      overscroll-behavior: contain;
     }
     .chapter-card {
       position: relative;
@@ -1406,18 +1414,21 @@
       margin-top: 4px;
     }
     .chapter-card .btn.endless:hover { filter: brightness(1.15); }
-    @media (max-width: 768px) {
-      .chapter-select-list { grid-template-columns: 1fr; gap: 10px; }
-      /* 章节卡片小屏压缩高度，圆角更小 */
+    /* 桌面端：多列卡片 */
+    @media (min-width: 640px) {
+      .chapter-select-list { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    }
+    @media (max-width: 639px) {
+      /* 移动端：卡片压缩，按钮触摸热区增大 */
       .chapter-card { min-height: 0; padding: 14px; border-radius: var(--radius-sm); }
-      /* 内层容器占满视口高度，确保列表可滚动 */
-      .chapter-select-inner { height: 94vh; max-height: 94vh; }
-      /* 进入按钮触摸热区增大 */
       .chapter-card .btn.primary, .chapter-card .btn.endless {
-        padding: 12px 14px;
-        font-size: 14px;
-        min-height: 44px;
+        padding: 14px 16px;
+        font-size: 15px;
+        min-height: 48px;
+        width: 100%;
       }
+      .chapter-select-header { padding: 4px 0; }
+      #chapter-select-back { min-height: 44px; padding: 10px 18px; font-size: 14px; }
     }
   </style>
 </head>

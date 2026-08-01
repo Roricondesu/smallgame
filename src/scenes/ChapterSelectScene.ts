@@ -79,7 +79,7 @@ export class ChapterSelectScene extends Phaser.Scene {
       `;
       list.appendChild(card);
       const btn = card.querySelector('[data-ch]') as HTMLButtonElement | null;
-      btn?.addEventListener('click', () => this.selectChapter(ch.id));
+      if (btn) btn.onclick = () => this.selectChapter(ch.id);
     }
 
     // 无尽模式卡片（复用第 5 章背景图，由 CSS ::before 叠加紫色暗化遮罩）
@@ -105,16 +105,15 @@ export class ChapterSelectScene extends Phaser.Scene {
     `;
     list.appendChild(endlessCard);
     const endlessBtn = endlessCard.querySelector('[data-endless]') as HTMLButtonElement | null;
-    endlessBtn?.addEventListener('click', () => this.selectEndless());
+    if (endlessBtn) endlessBtn.onclick = () => this.selectEndless();
 
-    // 返回主菜单按钮
+    // 返回主菜单按钮：onclick 覆盖式，避免重复绑定旧闭包
     const backBtn = document.getElementById('chapter-select-back') as HTMLButtonElement | null;
-    if (backBtn && backBtn.dataset.bound !== '1') {
-      backBtn.dataset.bound = '1';
-      backBtn.addEventListener('click', () => {
+    if (backBtn) {
+      backBtn.onclick = () => {
         this.hideChapterUI();
         this.scene.start('Menu');
-      });
+      };
     }
   }
 
