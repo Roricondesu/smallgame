@@ -74,7 +74,7 @@ export class ChapterSelectScene extends Phaser.Scene {
         <div class="chapter-boss">${svgIcon('chapter', 12)} Boss · ${bossName}</div>
         <div class="chapter-target">目标 ${formatNum(ch.targetGold)} 金币</div>
         ${unlocked
-          ? `<button class="btn primary" data-ch="${ch.id}">进入</button>`
+          ? `<button class="btn primary" data-ch="${ch.id}">开始游戏</button>`
           : `<div class="chapter-locked">未解锁</div>`}
       `;
       list.appendChild(card);

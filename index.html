@@ -1272,39 +1272,48 @@
       position: fixed;
       inset: 0;
       z-index: 50;
-      display: flex;
-      align-items: stretch;
-      justify-content: center;
       background: radial-gradient(ellipse at center, #0a1018 0%, #050709 100%);
       font-family: "Z Labs RoundPix 12px M CN", sans-serif;
+      /* 用绝对定位撑满，避免 flex 在移动端的滚动兼容问题 */
       padding: env(safe-area-inset-top, 8px) env(safe-area-inset-right, 8px) env(safe-area-inset-bottom, 8px) env(safe-area-inset-left, 8px);
+      box-sizing: border-box;
     }
     #chapter-select-ui.hidden { display: none; }
     .chapter-select-inner {
-      width: min(1100px, 100%);
-      /* 用 100dvh 适配移动端地址栏；fallback 100vh */
-      height: 100vh;
-      height: 100dvh;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      padding: 10px;
+      position: relative;
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      /* 用 100% 撑满父级 content-box（父级 #chapter-select-ui 已扣除 safe-area padding）。
+         若用 100vh 会超出可见区域，导致绝对定位的列表底部按钮被裁切，移动端看不到「开始游戏」。 */
+      height: 100%;
       box-sizing: border-box;
     }
     .chapter-select-header {
+      position: relative;
       display: flex;
       justify-content: flex-end;
-      flex-shrink: 0;
+      padding: 8px 10px;
+      height: 48px;
+      box-sizing: border-box;
     }
     .chapter-select-list {
+      position: absolute;
+      top: 48px;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
       display: grid;
       /* 移动端默认单列，桌面端多列由媒体查询覆盖 */
       grid-template-columns: 1fr;
+      /* 关键：行高按内容撑开，而非均分容器高度。
+         否则 6 张卡片会被压缩到各自 ~114px，按钮被 overflow:hidden 裁切不可见。 */
+      grid-auto-rows: min-content;
+      align-content: start;
       gap: 12px;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 4px;
-      flex: 1 1 auto;
-      min-height: 0;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-y;
       overscroll-behavior: contain;
@@ -1419,8 +1428,8 @@
       .chapter-select-list { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
     }
     @media (max-width: 639px) {
-      /* 移动端：卡片压缩，按钮触摸热区增大 */
-      .chapter-card { min-height: 0; padding: 14px; border-radius: var(--radius-sm); }
+      /* 移动端：卡片按内容高度，按钮触摸热区增大 */
+      .chapter-card { padding: 14px; border-radius: var(--radius-sm); }
       .chapter-card .btn.primary, .chapter-card .btn.endless {
         padding: 14px 16px;
         font-size: 15px;
