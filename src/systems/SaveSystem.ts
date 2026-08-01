@@ -41,6 +41,7 @@ export const DEFAULT_SAVE: SaveData = {
     totalGoldEarned: 0n,
     highestBallValue: 0n,
   },
+  slotMultipliers: [1, 1, 1, 1, 1],
 };
 
 /** 槽位元信息（用于主菜单展示，无需加载完整存档） */
@@ -203,6 +204,10 @@ export class SaveSystem {
     if (merged.endlessUnlocked == null) merged.endlessUnlocked = false;
     if (merged.endlessMode == null) merged.endlessMode = false;
     if (merged.endlessBossTier == null) merged.endlessBossTier = 0;
+    // 槽位倍率迁移：旧档默认 5 个槽位均为 1.0
+    if (!merged.slotMultipliers || !Array.isArray(merged.slotMultipliers) || merged.slotMultipliers.length < 5) {
+      merged.slotMultipliers = [1, 1, 1, 1, 1];
+    }
 
     // 迁移旧版弹珠（Record<string, number> 充次数 → Record<string, MarbleSave> 拥有+等级）
     // 旧版：每种弹珠每章自动补充，玩家可任意使用 → 视作全部已购买 1 级

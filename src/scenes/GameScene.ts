@@ -141,6 +141,9 @@ export class GameScene extends Phaser.Scene {
   private busCbs: Array<{ event: string; cb: (...args: unknown[]) => void }> = [];
   // Matter 碰撞事件回调引用（shutdown 时需 off，防止场景重启后旧回调引用已销毁场景导致卡死）
   private collisionCb: ((event: MatterJS.IEventCollision<MatterJS.Engine>) => void) | null = null;
+  // 浮动文字对象池：复用 Text 对象避免高频结算时频繁创建/销毁导致 GC 卡顿
+  private floatTextPool: Phaser.GameObjects.Text[] = [];
+  private static readonly FLOAT_TEXT_POOL_MAX = 60;
 
   // 布局相关引用（resize 时需重新定位的元素）
   private gridBg!: Phaser.GameObjects.Graphics;
@@ -205,15 +208,14 @@ export class GameScene extends Phaser.Scene {
     this.gridBgRect = this.add.rectangle(0, 0, 0, 0, 0x000000, 0.2).setStrokeStyle(1, 0x30363d).setDepth(-1);
 
     // 结算槽容器（空壳，repositionSettleSlots 在 applyLayout 中定位）
+    // 每个槽位倍率独立可升级（基础 1.0），由 GameState.getSlotMultiplier 读取
     this.settleSlots = [];
     this.settleTexts = [];
     for (let i = 0; i < BALANCE.bottomSlots; i++) {
-      const isCenter = i === Math.floor(BALANCE.bottomSlots / 2);
-      const color = isCenter ? 0xf0b429 : 0x2db7a3;
-      const rect = this.add.rectangle(0, 0, 0, 0, color, 0.15).setStrokeStyle(2, color, 0.8);
+      const rect = this.add.rectangle(0, 0, 0, 0, 0x2db7a3, 0.15).setStrokeStyle(2, 0x2db7a3, 0.8);
       this.settleSlots.push(rect);
-      const txt = this.add.text(0, 0, isCenter ? '×2' : '×1', {
-        fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '14px', color: isCenter ? '#f0b429' : '#2db7a3',
+      const txt = this.add.text(0, 0, `×${GameState.getSlotMultiplier(i).toFixed(1)}`, {
+        fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '14px', color: '#2db7a3',
       }).setOrigin(0.5);
       this.settleTexts.push(txt);
     }
@@ -335,6 +337,10 @@ export class GameScene extends Phaser.Scene {
     this.onBus(EVT.PRESTIGE_CONFIRM, () => {
       GameState.prestige(GameState.chapterId + 1);
       this.scene.start('ChapterSelect');
+    });
+    // 槽位升级后刷新底部结算槽显示文字与颜色
+    this.onBus(EVT.SLOT_UPGRADED, (idx: unknown) => {
+      this.updateSettleSlotDisplay(typeof idx === 'number' ? idx : -1);
     });
     this.onBus(EVT.ACTIVE_TRIGGERED, (payload: unknown) => {
       const p = payload as { skillId: string; duration: number };
@@ -472,6 +478,8 @@ export class GameScene extends Phaser.Scene {
       this.bgGradient = null as unknown as Phaser.GameObjects.Graphics;
       this.gridBg = null as unknown as Phaser.GameObjects.Graphics;
       this.gridBgRect = null as unknown as Phaser.GameObjects.Rectangle;
+      // 清空浮动文字池：场景重启时 Phaser 会销毁 display tree 中的对象，引用需清空避免悬空
+      this.floatTextPool = [];
       this.scale.off('resize', this.onResize, this);
     });
     this.events.on('pause', () => GameState.saveGame());
@@ -603,6 +611,24 @@ export class GameScene extends Phaser.Scene {
       const x = this.gridX + slotW * (i + 0.5);
       this.settleSlots[i].setPosition(x, this.settleY + 20).setSize(slotW - 8, 40);
       this.settleTexts[i].setPosition(x, this.settleY + 20);
+    }
+  }
+
+  /** 槽位升级后刷新显示文字与颜色（idx=-1 刷新全部） */
+  private updateSettleSlotDisplay(idx: number) {
+    const start = idx >= 0 ? idx : 0;
+    const end = idx >= 0 ? idx + 1 : BALANCE.bottomSlots;
+    for (let i = start; i < end; i++) {
+      if (i >= this.settleTexts.length) continue;
+      const mul = GameState.getSlotMultiplier(i);
+      this.settleTexts[i].setText(`×${mul.toFixed(1)}`);
+      // 倍率越高颜色越偏金（≥2.0 金色，<2.0 青色）
+      const isGold = mul >= 2.0;
+      const color = isGold ? 0xf0b429 : 0x2db7a3;
+      const hexColor = isGold ? '#f0b429' : '#2db7a3';
+      this.settleTexts[i].setColor(hexColor);
+      this.settleSlots[i].setStrokeStyle(2, color, 0.8);
+      this.settleSlots[i].setFillStyle(color, 0.15);
     }
   }
 
@@ -831,6 +857,8 @@ export class GameScene extends Phaser.Scene {
     const slow = this.dialogue?.isPlaying() ? 0.1 : 1;
     this.time.timeScale = slow;
     this.matter.world.engine.timing.timeScale = slow;
+    // 缓存时间戳，避免一帧内多次调用 Date.now() 造成开销
+    const now = Date.now();
     // 同步球上数字文字到球的位置 + 检测停滞球
     for (const ball of this.balls) {
       ball.text.setPosition(ball.sprite.x, ball.sprite.y - 14);
@@ -838,7 +866,7 @@ export class GameScene extends Phaser.Scene {
     // boss 战：玩家球与 boss 本体的距离命中检测（不依赖 Matter 物理体）
     if (this.bossActive && this.bossSprite) {
       const r = this.bossRadius + BALL_RADIUS;
-      const frozen = Date.now() < this.bossFrostUntil;
+      const frozen = now < this.bossFrostUntil;
       for (let i = this.balls.length - 1; i >= 0; i--) {
         const b = this.balls[i];
         if (b.source === 'boss') continue;
@@ -869,7 +897,7 @@ export class GameScene extends Phaser.Scene {
         if (ball.sprite.y < 0) {
           this.bossBallReachedTop(ball);
           this.destroyBall(i);
-        } else if (ball.bossSpawnTime && Date.now() - ball.bossSpawnTime > 20000) {
+        } else if (ball.bossSpawnTime && now - ball.bossSpawnTime > 20000) {
           this.spawnFloatText(ball.sprite.x, ball.sprite.y, '消散', 0x888888);
           this.destroyBall(i);
         }
@@ -884,8 +912,8 @@ export class GameScene extends Phaser.Scene {
       // 防止球卡住：检测长时间停滞的球（速度过低），强制结算
       const v = ball.sprite.body?.velocity;
       if (v && Math.abs(v.x) < 0.3 && Math.abs(v.y) < 0.3) {
-        if (!ball.stuckSince) ball.stuckSince = Date.now();
-        else if (Date.now() - ball.stuckSince > 3000) {
+        if (!ball.stuckSince) ball.stuckSince = now;
+        else if (now - ball.stuckSince > 3000) {
           this.settleBall(ball);
           this.destroyBall(i);
         }
@@ -1136,7 +1164,7 @@ export class GameScene extends Phaser.Scene {
   private settleBall(ball: Ball) {
     // boss 战时未命中本体的玩家球落底后正常加金币（命中本体的球已在碰撞中销毁）
     const combo = GameState.addCombo();
-    const comboMul = 1 + Math.min(2, combo * 0.05);
+    const comboMul = GameState.currentComboMul();
     const gold = this.computeSettledGold(ball, comboMul);
     GameState.addGold(gold);
     GameState.onBallSettled(ball.value);
@@ -1151,7 +1179,7 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * 计算球落底的最终结算数值（与加金币结算一致）：
-   * 槽位倍率（中央 ×2）→ 贤者副本 → 元素弹珠（冰翻倍/暗复制）→ 连击倍率。
+   * 槽位倍率（每槽位独立升级，基础 1.0）→ 贤者副本 → 元素弹珠（冰翻倍/暗复制）→ 连击倍率。
    * 元素弹珠效果会生成对应浮动文字。纯计算，不修改金币/连击状态。
    * 用于：① settleBall 加金币；② fireBallBossBody 计算对 Boss 伤害（伤害=最终结算数值）。
    */
@@ -1160,8 +1188,8 @@ export class GameScene extends Phaser.Scene {
     const gridW = BALANCE.gridCols * BALANCE.cellSize;
     const slotW = gridW / BALANCE.bottomSlots;
     const slotIdx = Math.min(BALANCE.bottomSlots - 1, Math.max(0, Math.floor((ball.sprite.x - this.gridX) / slotW)));
-    const isCenter = slotIdx === Math.floor(BALANCE.bottomSlots / 2);
-    const multiplier = isCenter ? 2 : 1;
+    // 每个槽位倍率独立可升级（基础 1.0，+0.1/级），由 GameState 管理
+    const multiplier = GameState.getSlotMultiplier(slotIdx);
     let gold = bigMulNum(ball.value, multiplier);
 
     if (ball.sageCopy > 0n) {
@@ -1180,11 +1208,11 @@ export class GameScene extends Phaser.Scene {
           break;
         }
         case 'dark': {
-          // 暗影：按等级倍率复制数值
-          const copies = ball.marble.getValue(mLevel);
-          const extra = bigMulNum(ball.value, multiplier * (copies - 1));
+          // 暗影：落底额外获得倍率化原始数值奖金，不乘槽位倍率（与 ice 翻倍总结算区分）
+          const mul = ball.marble.getValue(mLevel);
+          const extra = bigMulNum(ball.value, mul - 1);
           gold = gold + extra;
-          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `暗影 ×${copies.toFixed(2)}`, ball.marble.color);
+          this.spawnFloatText(ball.sprite.x, ball.sprite.y - 36, `暗影奖金 +${formatNum(extra)}`, ball.marble.color);
           break;
         }
         default:
@@ -1377,13 +1405,32 @@ export class GameScene extends Phaser.Scene {
 
   // ===== 视觉 =====
   private spawnFloatText(x: number, y: number, text: string, color: number) {
-    const t = this.add.text(x, y, text, {
-      fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '12px',
-      color: '#' + color.toString(16).padStart(6, '0'), stroke: '#000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(10);
+    // 对象池：优先复用空闲 Text，避免高频结算时频繁创建/销毁导致 GC 卡顿
+    let t: Phaser.GameObjects.Text | undefined;
+    for (const ft of this.floatTextPool) {
+      if (!ft.active) { t = ft; break; }
+    }
+    if (!t) {
+      if (this.floatTextPool.length >= GameScene.FLOAT_TEXT_POOL_MAX) {
+        // 池满：丢弃本次浮动文字，避免无限增长
+        return;
+      }
+      t = this.add.text(x, y, text, {
+        fontFamily: '"Z Labs RoundPix 12px M CN", sans-serif', fontSize: '12px',
+        color: '#' + color.toString(16).padStart(6, '0'), stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(10);
+      this.floatTextPool.push(t);
+    } else {
+      t.setPosition(x, y);
+      t.setText(text);
+      t.setColor('#' + color.toString(16).padStart(6, '0'));
+      t.setAlpha(1);
+      t.setVisible(true);
+      t.setActive(true);
+    }
     this.tweens.add({
       targets: t, y: y - 40, alpha: 0, duration: 600,
-      onComplete: () => t.destroy(),
+      onComplete: () => { t!.setVisible(false); t!.setActive(false); },
     });
   }
 

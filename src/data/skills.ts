@@ -203,6 +203,23 @@ export const SKILLS: SkillConfig[] = [
     icon: 'coin', desc: '弹珠撞墙时按当前数值获得额外金币',
     prereq: { id: 'wallBounce', level: 5 }, prereqBonusLevels: 5,
   },
+  // 连击系 - 提升连击上限与倍率（基础 200 连击满 ×2，最高 2000 连击 ×20）
+  {
+    id: 'comboCap', name: '最大连击奖励', category: 'global', maxLevel: 9,
+    baseCost: 200000, costGrowth: 2.2,
+    effect: (lvl) => `连击上限 ${200 + lvl * 200}（基础 200）`,
+    getValue: (lvl) => 200 + lvl * 200,
+    icon: 'combo', desc: '提升连击累积上限，每级 +200 连击容量（最高 2000）',
+    prereq: { id: 'goldBonus', level: 5 }, prereqBonusLevels: 0,
+  },
+  {
+    id: 'comboMul', name: '倍速', category: 'global', maxLevel: 9,
+    baseCost: 500000, costGrowth: 2.3,
+    effect: (lvl) => `满连击倍率 ×${(2 + lvl * 2).toFixed(0)}（基础 ×2）`,
+    getValue: (lvl) => 2 + lvl * 2,
+    icon: 'combo', desc: '提升满连击时的金币倍率，每级 +×2（最高 ×20）',
+    prereq: { id: 'comboCap', level: 3 }, prereqBonusLevels: 0,
+  },
   // 主动技能
   {
     id: 'frenzy', name: '狂热', category: 'active', maxLevel: 1,

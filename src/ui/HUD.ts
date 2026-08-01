@@ -10,6 +10,7 @@ import { AUTO_DROPPERS, AUTO_MAP, CRYSTAL_UPGRADES } from '../data/chapters';
 import { MARBLES } from '../data/marbles';
 import { svgIcon, operatorIcon, type IconKey } from './icons';
 import type { PegSave } from '../types';
+import { BALANCE } from '../types';
 
 /** HUD 读取 scene 教程状态所需的最小接口（避免循环依赖 GameScene） */
 interface TaskHintScene {
@@ -19,7 +20,7 @@ interface TaskHintScene {
 export class HUD {
   private scene: Phaser.Scene;
   private root: HTMLElement;
-  private shopTab: 'pegs' | 'autos' | 'skills' | 'global' | 'marbles' = 'pegs';
+  private shopTab: 'pegs' | 'autos' | 'skills' | 'global' | 'slots' | 'marbles' = 'pegs';
   private onPlacementSelect?: (typeId: string | null) => void;
   /** DOM 事件用 onclick 赋值（覆盖式），每次 mount 覆盖旧回调，确保引用最新 HUD 实例，无需去重 */
   private selectedPegType: string | null = null;
@@ -156,7 +157,7 @@ export class HUD {
       (t as HTMLElement).onclick = (e) => {
         tabs.forEach((x) => x.classList.remove('active'));
         (e.currentTarget as HTMLElement).classList.add('active');
-        this.shopTab = (e.currentTarget as HTMLElement).dataset.tab as 'pegs' | 'autos' | 'skills' | 'global';
+        this.shopTab = (e.currentTarget as HTMLElement).dataset.tab as 'pegs' | 'autos' | 'skills' | 'global' | 'slots';
         this.renderShop();
       };
     });
@@ -209,6 +210,7 @@ export class HUD {
     this.onBus(EVT.PEG_SOLD, () => { this.updateHeader(); this.renderShop(); });
     this.onBus(EVT.SKILL_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
     this.onBus(EVT.AUTO_BOUGHT, () => { this.updateHeader(); this.renderShop(); });
+    this.onBus(EVT.SLOT_UPGRADED, () => { this.updateHeader(); this.renderShop(); });
     // 归零弹窗在归零剧情对话结束后才弹出（由 GameScene 发 PRESTIGE_DIALOGUE_DONE）
     this.onBus(EVT.PRESTIGE_DIALOGUE_DONE, () => this.showPrestigeModal());
     this.onBus(EVT.BOSS_TRIGGER, () => this.updateBossButtonState());
@@ -442,6 +444,7 @@ export class HUD {
     if (this.shopTab === 'pegs') this.renderPegShop(list);
     else if (this.shopTab === 'autos') this.renderAutoShop(list);
     else if (this.shopTab === 'skills') this.renderSkillShop(list);
+    else if (this.shopTab === 'slots') this.renderSlotShop(list);
     else if (this.shopTab === 'marbles') this.renderMarbleCodex(list);
     else this.renderGlobalShop(list);
   }
@@ -635,6 +638,45 @@ export class HUD {
         el.querySelector('[data-act="speed"]')?.addEventListener('click', (e) => {
           e.stopPropagation();
           if (GameState.upgradeAutoDropperSpeed(cfg.id)) this.renderShop();
+        });
+      }
+      list.appendChild(el);
+    }
+  }
+
+  /** 底部结算槽位升级：每个槽位独立升级，基础 ×1.0，每级 +0.1，消耗数晶 */
+  private renderSlotShop(list: HTMLElement) {
+    const tip = document.createElement('div');
+    tip.style.cssText = 'color: var(--muted); font-size: 11px; line-height: 1.6; margin-bottom: 10px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px;';
+    tip.textContent = '弹珠落底结算时按所在槽位倍率加成。每个槽位独立升级，基础 ×1.0，每级 +0.1。永久生效，归零不重置。';
+    list.appendChild(tip);
+
+    for (let i = 0; i < BALANCE.bottomSlots; i++) {
+      const mul = GameState.getSlotMultiplier(i);
+      const lvl = GameState.getSlotLevel(i);
+      const maxLevel = GameState.getSlotMaxLevel();
+      const maxed = lvl >= maxLevel;
+      const cost = GameState.getSlotUpgradeCost(i);
+      const afford = GameState.crystal >= cost;
+      const isCenter = i === Math.floor(BALANCE.bottomSlots / 2);
+      const slotName = isCenter ? `槽位 ${i + 1}（中央）` : `槽位 ${i + 1}`;
+
+      const el = document.createElement('div');
+      el.className = `shop-item ${maxed ? 'locked' : ''}`;
+      el.innerHTML = `
+        <div class="item-head">
+          <div class="item-icon">${svgIcon('coin', 16)}</div>
+          <div class="item-name">${slotName}</div>
+          <div class="item-level">Lv.${lvl}/${maxLevel}</div>
+        </div>
+        <div class="item-desc">弹珠落入此槽位时获得倍率加成</div>
+        <div class="item-effect">当前倍率 ×${mul.toFixed(1)} → ×${(mul + 0.1).toFixed(1)}</div>
+        ${maxed ? `<div class="item-cost cant">已满级 ×${mul.toFixed(1)}</div>` :
+          `<div class="item-cost ${afford ? 'afford' : 'cant'}">${svgIcon('crystal', 12)} ${formatNum(cost)}</div>`}
+      `;
+      if (!maxed) {
+        el.addEventListener('click', () => {
+          GameState.upgradeSlot(i);
         });
       }
       list.appendChild(el);

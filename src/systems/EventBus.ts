@@ -20,6 +20,7 @@ export const EVT = {
   MARBLE_SELECTED: 'marble_selected',
   MARBLE_BOUGHT: 'marble_bought',
   MARBLE_UPGRADED: 'marble_upgraded',
+  SLOT_UPGRADED: 'slot_upgraded',
   DIALOGUE_TRIGGER: 'dialogue_trigger',
   MILESTONE_REACHED: 'milestone_reached',
   BOSS_TRIGGER: 'boss_trigger',

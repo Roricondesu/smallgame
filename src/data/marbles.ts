@@ -18,7 +18,7 @@ export const MARBLES: MarbleConfig[] = [
     getValue: (lv) => 1.5 + (lv - 1) * 0.1,
     getAutoWeight: (lv) => lv,
     effect: (lv) => `碰撞时数值额外 ×${(1.5 + (lv - 1) * 0.1).toFixed(2)}`,
-    desc: '燃烧的弹珠，每次撞击钉子都获得额外加成',
+    desc: '燃烧的弹珠，每次撞击钉子都获得额外数值加成',
   },
   {
     id: 'ice',
@@ -31,8 +31,8 @@ export const MARBLES: MarbleConfig[] = [
     maxLevel: 10,
     getValue: (lv) => 2 + (lv - 1) * 0.2,
     getAutoWeight: (lv) => lv,
-    effect: (lv) => `落底结算时再翻倍 ×${(2 + (lv - 1) * 0.2).toFixed(2)}`,
-    desc: '凝结的弹珠，结算时如冰花绽放再翻一倍',
+    effect: (lv) => `落底结算总额 ×${(2 + (lv - 1) * 0.2).toFixed(2)}`,
+    desc: '冰封：落底时结算总额翻倍（含槽位/连击等所有加成）',
   },
   {
     id: 'thunder',
@@ -46,7 +46,7 @@ export const MARBLES: MarbleConfig[] = [
     getValue: (lv) => 2 + (lv - 1),
     getAutoWeight: (lv) => lv,
     effect: (lv) => `随机链击 ${2 + (lv - 1)} 个钉子`,
-    desc: '充能的弹珠，撞击时会跳跃至附近其他钉子',
+    desc: '充能的弹珠，撞击时连锁电击附近其他钉子',
   },
   {
     id: 'poison',
@@ -59,8 +59,8 @@ export const MARBLES: MarbleConfig[] = [
     maxLevel: 10,
     getValue: (lv) => 1.3 + (lv - 1) * 0.1,
     getAutoWeight: (lv) => lv,
-    effect: (lv) => `撞击的钉子下次结算 ×${(1.3 + (lv - 1) * 0.1).toFixed(2)}`,
-    desc: '腐蚀性的弹珠，被触碰的钉子会被标记',
+    effect: (lv) => `污染钉子，其下次结算 ×${(1.3 + (lv - 1) * 0.1).toFixed(2)}`,
+    desc: '腐蚀性的弹珠，被触碰的钉子会被标记并获得结算加成',
   },
   {
     id: 'holy',
@@ -73,8 +73,8 @@ export const MARBLES: MarbleConfig[] = [
     maxLevel: 10,
     getValue: (lv) => 2 + (lv - 1) * 0.2,
     getAutoWeight: (lv) => lv,
-    effect: (lv) => `落下瞬间数值翻倍 ×${(2 + (lv - 1) * 0.2).toFixed(2)}`,
-    desc: '神圣的弹珠，落下瞬间数值直接翻倍',
+    effect: (lv) => `生成时初始数值 ×${(2 + (lv - 1) * 0.2).toFixed(2)}`,
+    desc: '神圣祝福：弹珠生成时即拥有倍率化的初始数值（高起点）',
   },
   {
     id: 'dark',
@@ -87,8 +87,8 @@ export const MARBLES: MarbleConfig[] = [
     maxLevel: 10,
     getValue: (lv) => 2 + (lv - 1) * 0.2,
     getAutoWeight: (lv) => lv,
-    effect: (lv) => `结算时复制为 ×${(2 + (lv - 1) * 0.2).toFixed(2)} 颗弹珠的数值`,
-    desc: '分裂的弹珠，落底时会复制自身的数值',
+    effect: (lv) => `落底额外奖金 ×${(2 + (lv - 1) * 0.2).toFixed(2)} 原值（不受槽位影响）`,
+    desc: '暗影：落底时额外获得倍率化原始数值奖金，无视落点槽位',
   },
 ];
 

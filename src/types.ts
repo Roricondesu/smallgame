@@ -50,6 +50,8 @@ export interface SaveData {
   endlessMode?: boolean;
   // 无尽模式已击败的 boss 阶层（每达到一个阈值触发一次 boss，击败后 +1）
   endlessBossTier?: number;
+  // 底部结算槽位倍率（5 个槽位，基础 1.0，每次升级 +0.1，永久生效）
+  slotMultipliers?: number[];
 }
 
 export interface PegConfig {

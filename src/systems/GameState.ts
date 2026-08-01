@@ -505,6 +505,61 @@ class GameStateClass {
     return true;
   }
 
+  // ===== 底部结算槽位倍率（永久升级，消耗数晶）=====
+  /** 槽位升级配置 */
+  static readonly SLOT_MAX_LEVEL = 30;  // 每槽位最高 30 级 → ×4.0
+  static readonly SLOT_STEP = 0.1;      // 每级 +0.1
+  static readonly SLOT_BASE_COST = 5;   // 基础消耗 5 数晶
+  static readonly SLOT_COST_GROWTH = 1.4;
+
+  /** 获取指定槽位的当前倍率（基础 1.0，每级 +0.1） */
+  getSlotMultiplier(idx: number): number {
+    const arr = this._save.slotMultipliers ?? [1, 1, 1, 1, 1];
+    const lvl = arr[idx] != null ? arr[idx] : 1;
+    return lvl;
+  }
+
+  /** 槽位最高升级等级 */
+  getSlotMaxLevel(): number {
+    return GameStateClass.SLOT_MAX_LEVEL;
+  }
+
+  /** 获取指定槽位的升级等级（0 起算，倍率 = 1.0 + lvl * 0.1） */
+  getSlotLevel(idx: number): number {
+    const arr = this._save.slotMultipliers ?? [1, 1, 1, 1, 1];
+    const mul = arr[idx] != null ? arr[idx] : 1;
+    return Math.round((mul - 1) / GameStateClass.SLOT_STEP);
+  }
+
+  /** 获取指定槽位升级到下一级所需的数晶 */
+  getSlotUpgradeCost(idx: number): bigint {
+    const lvl = this.getSlotLevel(idx);
+    return toBig(Math.floor(GameStateClass.SLOT_BASE_COST * Math.pow(GameStateClass.SLOT_COST_GROWTH, lvl)));
+  }
+
+  /** 升级指定槽位（消耗数晶，+0.1 倍率） */
+  upgradeSlot(idx: number): boolean {
+    if (idx < 0 || idx >= BALANCE.bottomSlots) return false;
+    if (!this._save.slotMultipliers || this._save.slotMultipliers.length < BALANCE.bottomSlots) {
+      this._save.slotMultipliers = [1, 1, 1, 1, 1];
+    }
+    const lvl = this.getSlotLevel(idx);
+    if (lvl >= GameStateClass.SLOT_MAX_LEVEL) {
+      bus.emit(EVT.TOAST, '槽位已满级');
+      return false;
+    }
+    const cost = this.getSlotUpgradeCost(idx);
+    if (this._save.crystal < cost) {
+      bus.emit(EVT.TOAST, '数晶不足');
+      return false;
+    }
+    this._save.crystal -= cost;
+    this._save.slotMultipliers[idx] = 1 + (lvl + 1) * GameStateClass.SLOT_STEP;
+    bus.emit(EVT.CRYSTAL_CHANGED, this._save.crystal);
+    bus.emit(EVT.SLOT_UPGRADED, idx);
+    return true;
+  }
+
   // ===== 周目 =====
   /** 公开入口：Boss 击败后等外部事件可重新检查章节进度 */
   recheckChapterGoal() {
@@ -766,6 +821,14 @@ class GameStateClass {
   }
 
   // ===== 连击 =====
+  /** 连击累积上限（基础 200，每级 comboCap 技能 +200，最高 2000） */
+  getComboCap(): number {
+    return 200 + this.getSkillLevel('comboCap') * 200;
+  }
+  /** 满连击时的倍率（基础 ×2，每级 comboMul 技能 +×2，最高 ×20） */
+  getComboMaxMul(): number {
+    return 2 + this.getSkillLevel('comboMul') * 2;
+  }
   addCombo() {
     const now = Date.now();
     if (now - this.comboTimer > 1200) this.combo = 0;
@@ -774,11 +837,16 @@ class GameStateClass {
     return this.combo;
   }
 
-  /** 当前连击倍率（只读，不递增连击数；过期返回 1） */
+  /** 当前连击倍率（只读，不递增连击数；过期返回 1）
+   *  公式：1 + (min(combo, cap) / cap) * (maxMul - 1)
+   *  基础：200 连击满 → ×2；满级：2000 连击满 → ×20 */
   currentComboMul(): number {
     const now = Date.now();
     if (now - this.comboTimer > 1200) return 1;
-    return 1 + Math.min(2, this.combo * 0.05);
+    const cap = this.getComboCap();
+    const maxMul = this.getComboMaxMul();
+    const ratio = Math.min(this.combo, cap) / cap;
+    return 1 + ratio * (maxMul - 1);
   }
 
   // ===== 离线 =====
